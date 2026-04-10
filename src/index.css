@@ -1,0 +1,394 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 17% 97%;
+    --foreground: 220 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    --primary: 213 53% 24%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 213 53% 24%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 14% 46%;
+
+    --accent: 213 53% 24%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 216 20% 90%;
+    --input: 216 20% 90%;
+    --ring: 213 53% 24%;
+
+    --radius: 0.375rem;
+
+    /* SPLM custom tokens */
+    --navy: 213 53% 24%;
+    --navy-light: 213 40% 36%;
+    --navy-dark: 213 60% 15%;
+    --sky: 205 58% 60%;
+    --sky-light: 205 58% 80%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 160 50% 10%;
+    --success-bg: 152 81% 96%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 28 73% 26%;
+    --warning-bg: 48 96% 89%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 224 76% 48%;
+    --info-bg: 214 95% 93%;
+
+    --danger: 0 72% 51%;
+    --danger-bg: 0 93% 94%;
+
+    --purple: 263 70% 50%;
+    --purple-bg: 263 85% 95%;
+    --teal: 189 94% 43%;
+    --teal-bg: 185 96% 90%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 20% 7%;
+    --foreground: 210 20% 96%;
+    --card: 220 20% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 220 20% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 205 58% 60%;
+    --primary-foreground: 220 20% 7%;
+    --secondary: 217 33% 15%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 217 33% 15%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 25% 18%;
+    --input: 217 25% 18%;
+    --ring: 213 27% 84%;
+
+    --navy: 205 58% 60%;
+    --navy-light: 205 50% 50%;
+    --navy-dark: 220 20% 10%;
+    --sky: 205 58% 60%;
+    --sky-light: 205 58% 40%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 160 50% 80%;
+    --success-bg: 160 40% 15%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 80% 80%;
+    --warning-bg: 38 40% 15%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 217 80% 80%;
+    --info-bg: 217 40% 15%;
+
+    --danger: 0 72% 51%;
+    --danger-bg: 0 40% 15%;
+
+    --purple: 263 70% 60%;
+    --purple-bg: 263 40% 15%;
+    --teal: 189 94% 43%;
+    --teal-bg: 189 40% 15%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 35% 30%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Poppins', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .font-mono {
+    font-family: 'DM Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .portal-card {
+    @apply bg-card rounded-md border border-border;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    animation: fade-in 0.15s ease;
+  }
+
+  .portal-badge {
+    @apply inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap;
+  }
+
+  .portal-badge-success {
+    @apply portal-badge;
+    background: hsl(var(--success-bg));
+    color: hsl(var(--success-foreground));
+  }
+
+  .portal-badge-danger {
+    @apply portal-badge;
+    background: hsl(var(--danger-bg));
+    color: hsl(var(--danger));
+  }
+
+  .portal-badge-info {
+    @apply portal-badge;
+    background: hsl(var(--info-bg));
+    color: hsl(var(--info-foreground));
+  }
+
+  .portal-badge-warning {
+    @apply portal-badge;
+    background: hsl(var(--warning-bg));
+    color: hsl(var(--warning-foreground));
+  }
+
+  .portal-badge-muted {
+    @apply portal-badge bg-muted text-muted-foreground;
+  }
+
+  .portal-input {
+    @apply w-full px-3 py-2 border border-border rounded-md text-sm bg-card text-foreground transition-all;
+    font-family: 'Poppins', sans-serif;
+  }
+
+  .portal-input:focus {
+    @apply outline-none ring-2 ring-primary/15 border-primary/50;
+  }
+
+  .portal-input::placeholder {
+    @apply text-muted-foreground;
+    font-weight: 400;
+  }
+
+  .portal-select {
+    @apply portal-input appearance-none pr-7 cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+
+  .portal-btn {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-medium cursor-pointer border-none transition-all;
+    font-family: 'Poppins', sans-serif;
+  }
+
+  .portal-btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .portal-btn-primary {
+    @apply portal-btn bg-primary text-primary-foreground;
+  }
+
+  .portal-btn-primary:hover:not(:disabled) {
+    background: hsl(var(--navy-light));
+  }
+
+  .portal-btn-secondary {
+    @apply portal-btn bg-card text-foreground border border-border;
+  }
+
+  .portal-btn-secondary:hover:not(:disabled) {
+    @apply bg-muted;
+  }
+
+  .portal-btn-danger {
+    @apply portal-btn;
+    background: hsl(0 86% 97%);
+    color: hsl(var(--destructive));
+    border: 1px solid hsl(0 80% 88%);
+  }
+
+  .portal-btn-danger:hover:not(:disabled) {
+    background: hsl(0 100% 94%);
+  }
+
+  .portal-btn-sm {
+    @apply py-1.5 px-3 text-[11px];
+  }
+
+  .portal-btn-xs {
+    @apply py-0.5 px-2 text-[11px] rounded;
+  }
+
+  .portal-table {
+    @apply w-full text-sm;
+    border-collapse: collapse;
+  }
+
+  .portal-table th {
+    @apply text-left text-[11px] font-semibold text-muted-foreground px-3.5 py-2.5 whitespace-nowrap uppercase tracking-wide bg-muted;
+    border-bottom: 1px solid hsl(var(--border));
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .portal-table td {
+    @apply px-3.5 py-2.5 text-foreground align-middle;
+    border-bottom: 1px solid hsl(216 20% 95%);
+    font-size: 13px;
+  }
+
+  .portal-table tbody tr {
+    @apply transition-colors;
+  }
+
+  .portal-table tbody tr:hover td {
+    @apply bg-muted/50;
+  }
+
+  .portal-stat-card {
+    @apply portal-card p-4;
+  }
+
+  .portal-stat-value {
+    @apply text-2xl font-bold leading-none;
+    color: hsl(var(--navy));
+  }
+
+  .portal-stat-label {
+    @apply text-[11px] text-muted-foreground mt-1.5 font-medium;
+  }
+
+  .portal-spinner {
+    @apply w-4 h-4 rounded-full inline-block;
+    border: 2px solid hsl(var(--info-bg));
+    border-top-color: hsl(var(--info));
+    animation: spin 0.7s linear infinite;
+  }
+
+  .portal-modal-bg {
+    @apply fixed inset-0 z-50 flex items-start justify-center p-12 overflow-y-auto;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+  }
+
+  .portal-modal {
+    @apply bg-card rounded-lg w-full max-w-lg shadow-xl overflow-hidden;
+    animation: fade-in 0.15s ease;
+  }
+
+  .portal-modal-head {
+    @apply bg-primary p-5;
+  }
+
+  .portal-modal-head h2 {
+    @apply text-sm font-semibold text-primary-foreground;
+  }
+
+  .portal-modal-head p {
+    @apply text-xs mt-1;
+    color: hsl(var(--sky));
+  }
+
+  .portal-modal-body {
+    @apply p-5;
+  }
+
+  .portal-modal-foot {
+    @apply px-5 py-3 border-t border-border flex gap-2 justify-end bg-muted;
+  }
+
+  .section-label {
+    @apply text-[9px] tracking-[2px] uppercase text-muted-foreground font-semibold mb-2 pb-1.5 border-b border-border;
+  }
+
+  .status-dot {
+    @apply w-1.5 h-1.5 rounded-full inline-block flex-shrink-0;
+  }
+
+  .dot-success {
+    background: hsl(var(--success));
+  }
+
+  .dot-danger {
+    background: hsl(var(--destructive));
+  }
+
+  .dot-info {
+    background: hsl(var(--info));
+    animation: blink 1s infinite;
+  }
+
+  .chip {
+    @apply inline-block text-[11px] px-2 py-0.5 rounded-md bg-muted text-foreground border border-border font-medium;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.25s ease-out;
+  }
+}
