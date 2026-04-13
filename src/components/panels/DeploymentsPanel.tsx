@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { listDeployments, createDeployment, updateDeploymentStatus, listProducts } from '@/lib/api';
+import { listDeploymentsPage, createDeployment, updateDeploymentStatus, listProductsForDropdown } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,7 @@ function Pipeline({ status }: { status: string }) {
   const cur = order[status] ?? 0;
 
   return (
-    <div className="flex items-start py-3 gap-0">
+    <div className="flex min-w-0 items-start gap-0 overflow-x-auto py-3 scrollbar-thin">
       {steps.map((s, i) => {
         const done = (status === 'success' && i <= 4) || i < cur;
         const active = i === cur && status !== 'success' && status !== 'failed';
@@ -55,13 +56,42 @@ export default function DeploymentsPanel() {
   const [envF, setEnvF] = useState('');
   const [statusF, setStatusF] = useState('');
   const [failTarget, setFailTarget] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10;
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useListPageSearchDebounce(search);
 
-  const load = () => { setLoading(true); Promise.all([listDeployments(), listProducts()]).then(([d, p]) => { setDeploys(d); setProducts(p); }).finally(() => setLoading(false)); };
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      listDeploymentsPage({
+        page,
+        pageSize,
+        environment: envF || undefined,
+        status: statusF || undefined,
+        search: debouncedSearch || undefined,
+      }),
+      listProductsForDropdown(),
+    ])
+      .then(([res, p]) => {
+        setDeploys(res.items);
+        setProducts(p);
+        setTotalPages(Math.max(1, res.total_pages));
+        setTotalCount(res.total_count);
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, envF, statusF]);
+  useEffect(() => {
+    load();
+  }, [page, envF, statusF, debouncedSearch]);
 
   const pname = (id: string) => products.find(p => p.id === id)?.name || id?.slice(0, 8);
   const blank = { product_id: '', version: '', environment: 'development', deploy_type: 'full', branch: '', commit_sha: '', rollback_version: '' };
-  const filtered = deploys.filter(d => (!envF || d.environment === envF) && (!statusF || d.status === statusF));
 
   const nextStatus: Record<string, string> = { pending: 'building', building: 'testing', testing: 'deploying', deploying: 'success' };
 
@@ -91,7 +121,7 @@ export default function DeploymentsPanel() {
         <h3 className="text-lg font-bold text-primary">🚀 New Deployment</h3>
         <Button variant="outline" onClick={() => setForm(null)}>← Back</Button>
       </div>
-      <div className="grid grid-cols-3 gap-4 mb-5">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         {Object.entries(ENV_CONFIG).map(([key, ec]) => (
           <div key={key} onClick={() => setForm((f: any) => ({ ...f, environment: key }))}
             className={cn('rounded-lg p-4 cursor-pointer transition-all border-2',
@@ -130,15 +160,18 @@ export default function DeploymentsPanel() {
       />
       <div className="bg-card rounded-lg border p-5">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">🚀 Deployments ({filtered.length})</h3>
-          <div className="flex gap-2 flex-wrap">
-            <select className="border rounded-md px-3 py-2 text-sm bg-background" value={envF} onChange={e => setEnvF(e.target.value)}><option value="">All Environments</option>{['development', 'staging', 'production'].map(o => <option key={o}>{o}</option>)}</select>
-            <select className="border rounded-md px-3 py-2 text-sm bg-background" value={statusF} onChange={e => setStatusF(e.target.value)}><option value="">All Statuses</option>{['pending', 'building', 'testing', 'deploying', 'success', 'failed', 'rolled_back'].map(o => <option key={o}>{o}</option>)}</select>
-            {can('deploy') && <Button onClick={() => setForm({ ...blank })}>+ New Deployment</Button>}
+          <h3 className="text-lg font-bold text-primary">
+            🚀 Deployments ({totalCount.toLocaleString()})
+          </h3>
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <ListPageSearchInput value={search} onChange={setSearch} className="w-full min-w-0 sm:w-44" />
+            <select className="w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm sm:w-auto" value={envF} onChange={e => { setPage(1); setEnvF(e.target.value); }}><option value="">All Environments</option>{['development', 'staging', 'production'].map(o => <option key={o}>{o}</option>)}</select>
+            <select className="w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm sm:w-auto" value={statusF} onChange={e => { setPage(1); setStatusF(e.target.value); }}><option value="">All Statuses</option>{['pending', 'building', 'testing', 'deploying', 'success', 'failed', 'rolled_back'].map(o => <option key={o}>{o}</option>)}</select>
+            {can('deploy') && <Button className="w-full shrink-0 sm:w-auto" onClick={() => setForm({ ...blank })}>+ New Deployment</Button>}
           </div>
         </div>
         {loading ? <TableSkeleton /> :
-          filtered.length === 0 ? (
+          deploys.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <span className="text-4xl mb-3">🚀</span>
               <p className="font-medium">No deployments</p>
@@ -146,7 +179,7 @@ export default function DeploymentsPanel() {
             </div>
           ) :
             <div className="space-y-3">
-              {filtered.map(d => {
+              {deploys.map(d => {
                 const ec = ENV_CONFIG[d.environment as keyof typeof ENV_CONFIG];
                 return (
                   <div key={d.id} className={cn('border rounded-lg p-4 hover:shadow-sm transition-shadow', d.status === 'failed' ? 'border-destructive/30 bg-destructive/5' : d.status === 'success' && d.environment === 'production' ? 'border-success/30' : '')}>
@@ -183,6 +216,15 @@ export default function DeploymentsPanel() {
               })}
             </div>
         }
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

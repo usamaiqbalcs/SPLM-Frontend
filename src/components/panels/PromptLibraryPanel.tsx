@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { promptLibraryApi, PromptLibraryDto, PromptVersionDto } from '@/lib/api-aisdlc';
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  ListPageSearchInput,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -40,6 +46,9 @@ export default function PromptLibraryPanel() {
   });
 
   const [newVersionForm, setNewVersionForm] = useState({ content: '', change_notes: '' });
+  const [promptListPage, setPromptListPage] = useState(1);
+  const [promptSearch, setPromptSearch] = useState('');
+  const debouncedPromptSearch = useListPageSearchDebounce(promptSearch);
 
   // Load all prompts
   const loadPrompts = async () => {
@@ -87,24 +96,20 @@ export default function PromptLibraryPanel() {
     }
     try {
       setSubmitting(true);
-      const created = await promptLibraryApi.create({
+      await promptLibraryApi.create({
         name: newPromptForm.name,
         description: newPromptForm.description,
         category: newPromptForm.category,
-        content: newPromptForm.content,   // backend creates initial version from this
-      });
-      // ← was createVersion(created.id, data) — correct call is createVersion({ prompt_id, content, change_notes })
-      await promptLibraryApi.createVersion({
-        prompt_id: created.id,
         content: newPromptForm.content,
-        change_notes: 'Initial version',
       });
+      // CreatePrompt API already persists version 1; do not call createVersion here (duplicate v2 / extra failure surface).
       toast.success('Prompt created successfully');
       setNewPromptDialog(false);
       setNewPromptForm({ name: '', description: '', category: 'general', content: '' });
       await loadPrompts();
-    } catch (error) {
-      toast.error('Failed to create prompt');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to create prompt';
+      toast.error(msg);
       console.error(error);
     } finally {
       setSubmitting(false);
@@ -141,9 +146,33 @@ export default function PromptLibraryPanel() {
     toast.success('Copied to clipboard');
   };
 
-  const filteredPrompts = activeCategory === 'all'
-    ? prompts
-    : prompts.filter((p) => p.category === activeCategory);
+  const filteredPrompts = useMemo(() => {
+    const byCat =
+      activeCategory === 'all' ? prompts : prompts.filter((p) => p.category === activeCategory);
+    if (!debouncedPromptSearch) return byCat;
+    return byCat.filter((p) =>
+      rowMatchesListSearch(debouncedPromptSearch, [
+        p.name,
+        p.description,
+        p.category,
+        CATEGORY_CONFIG[p.category as Category]?.label,
+      ]),
+    );
+  }, [prompts, activeCategory, debouncedPromptSearch]);
+
+  const promptListTotalPages = Math.max(1, Math.ceil(filteredPrompts.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedFilteredPrompts = useMemo(() => {
+    const start = (promptListPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return filteredPrompts.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [filteredPrompts, promptListPage]);
+
+  useEffect(() => {
+    setPromptListPage((p) => Math.min(Math.max(1, p), promptListTotalPages));
+  }, [promptListTotalPages]);
+
+  useEffect(() => {
+    setPromptListPage(1);
+  }, [activeCategory, debouncedPromptSearch]);
 
   if (loading) {
     return (
@@ -209,7 +238,7 @@ export default function PromptLibraryPanel() {
 
         {/* Category Filter */}
         <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v as Category | 'all')} className="w-full">
-          <TabsList className="w-full grid grid-cols-5">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-5">
             <TabsTrigger value="all"         className="text-xs">All</TabsTrigger>
             <TabsTrigger value="qa_fix"      className="text-xs">QA</TabsTrigger>
             <TabsTrigger value="code_review" className="text-xs">Review</TabsTrigger>
@@ -218,29 +247,51 @@ export default function PromptLibraryPanel() {
           </TabsList>
         </Tabs>
 
+        <ListPageSearchInput
+          value={promptSearch}
+          onChange={setPromptSearch}
+          className="w-full h-9 text-sm"
+          placeholder="Search prompts…"
+          aria-label="Search prompts"
+        />
+
         {/* Prompt List */}
-        <div className="overflow-y-auto flex-1 space-y-2">
-          {filteredPrompts.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-3">No prompts found</p>
-          ) : (
-            filteredPrompts.map((prompt) => (
-              <button key={prompt.id} onClick={() => selectPrompt(prompt)}
-                className={`w-full text-left p-3 rounded-lg transition-colors ${
-                  selectedPrompt?.id === prompt.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                }`}>
-                <div className="font-medium text-sm mb-1">{prompt.name}</div>
-                <div className="flex gap-2 items-center">
-                  <Badge variant="outline" className={CATEGORY_CONFIG[prompt.category as Category]?.color ?? ''}>
-                    {CATEGORY_CONFIG[prompt.category as Category]?.label ?? prompt.category}
-                  </Badge>
-                  {/* ← was prompt.versions.length (didn't exist); use version_count from DTO */}
-                  <span className="text-xs text-muted-foreground">v{prompt.version_count}</span>
-                  {prompt.is_active && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">Active</span>
-                  )}
-                </div>
-              </button>
-            ))
+        <div className="overflow-y-auto flex-1 flex flex-col min-h-0">
+          <div className="space-y-2 flex-1">
+            {filteredPrompts.length === 0 ? (
+              <p className="text-sm text-muted-foreground p-3">
+                {prompts.length === 0 ? 'No prompts found' : 'No prompts match your search'}
+              </p>
+            ) : (
+              pagedFilteredPrompts.map((prompt) => (
+                <button key={prompt.id} onClick={() => selectPrompt(prompt)}
+                  className={`w-full text-left p-3 rounded-lg transition-colors ${
+                    selectedPrompt?.id === prompt.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}>
+                  <div className="font-medium text-sm mb-1">{prompt.name}</div>
+                  <div className="flex gap-2 items-center">
+                    <Badge variant="outline" className={CATEGORY_CONFIG[prompt.category as Category]?.color ?? ''}>
+                      {CATEGORY_CONFIG[prompt.category as Category]?.label ?? prompt.category}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">v{prompt.version_count}</span>
+                    {prompt.is_active && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">Active</span>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          {promptListTotalPages > 1 && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t mt-2 shrink-0">
+              <Button type="button" variant="outline" size="sm" disabled={promptListPage <= 1}
+                onClick={() => setPromptListPage((p) => Math.max(1, p - 1))}>Prev</Button>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {promptListPage}/{promptListTotalPages} ({filteredPrompts.length})
+              </span>
+              <Button type="button" variant="outline" size="sm" disabled={promptListPage >= promptListTotalPages}
+                onClick={() => setPromptListPage((p) => p + 1)}>Next</Button>
+            </div>
           )}
         </div>
       </div>

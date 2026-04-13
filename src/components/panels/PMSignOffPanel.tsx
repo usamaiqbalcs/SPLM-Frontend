@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { pmChecklistApi, PmSignoffChecklistDto } from '@/lib/api-aisdlc';
-import { listProducts } from '@/lib/api';
+import { listProductsPage } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -29,30 +30,59 @@ const DEFAULT_CHECKLIST: ChecklistItem[] = [
 
 export default function PMSignOffPanel() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPage, setProductPage] = useState(1);
+  const [productTotalPages, setProductTotalPages] = useState(1);
+  const [productTotalCount, setProductTotalCount] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(DEFAULT_CHECKLIST);
   const [notes, setNotes] = useState('');
   const [signoffData, setSignoffData] = useState<PmSignoffChecklistDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const debouncedProductSearch = useListPageSearchDebounce(productSearch);
 
-  // Load products
   useEffect(() => {
+    setProductPage(1);
+  }, [debouncedProductSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const data = await listProducts();
+        const res = await listProductsPage({
+          page: productPage,
+          pageSize: 10,
+          search: debouncedProductSearch || undefined,
+        });
+        if (cancelled) return;
+        const data: Product[] = (res.items ?? []).map((p: { id: string; name?: string }) => ({
+          id: p.id,
+          name: p.name ?? p.id,
+        }));
         setProducts(data);
-        if (data.length > 0) setSelectedProductId(data[0].id);
+        setProductTotalPages(Math.max(1, res.total_pages ?? 1));
+        setProductTotalCount(res.total_count ?? data.length);
+        setSelectedProductId((cur) => {
+          if (data.length === 0) return null;
+          if (cur && data.some((p) => p.id === cur)) return cur;
+          return data[0].id;
+        });
       } catch (error) {
-        toast.error('Failed to load products');
-        console.error(error);
+        if (!cancelled) {
+          toast.error('Failed to load products');
+          console.error(error);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchProducts();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [productPage, debouncedProductSearch]);
 
   // Load checklist when product changes
   useEffect(() => {
@@ -145,9 +175,19 @@ export default function PMSignOffPanel() {
   return (
     <div className="flex h-full gap-4 p-6">
       {/* Left Sidebar: Product List */}
-      <div className="w-64 border-r overflow-y-auto">
-        <h3 className="text-sm font-semibold mb-4">Products</h3>
-        <div className="space-y-2">
+      <div className="w-64 border-r overflow-y-auto flex flex-col">
+        <h3 className="text-sm font-semibold mb-2">Products</h3>
+        <ListPageSearchInput
+          value={productSearch}
+          onChange={setProductSearch}
+          className="w-full h-8 text-xs mb-2"
+          placeholder="Search products…"
+          aria-label="Search products for sign-off"
+        />
+        <p className="text-[10px] text-muted-foreground mb-3 tabular-nums">
+          Page {productPage} of {productTotalPages} ({productTotalCount} total)
+        </p>
+        <div className="space-y-2 flex-1">
           {products.map((product) => (
             <button
               key={product.id}
@@ -162,6 +202,30 @@ export default function PMSignOffPanel() {
             </button>
           ))}
         </div>
+        {productTotalPages > 1 && (
+          <div className="flex gap-2 pt-3 mt-auto border-t">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={loading || productPage <= 1}
+              onClick={() => setProductPage((p) => Math.max(1, p - 1))}
+            >
+              Prev
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={loading || productPage >= productTotalPages}
+              onClick={() => setProductPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Right Content: Checklist */}

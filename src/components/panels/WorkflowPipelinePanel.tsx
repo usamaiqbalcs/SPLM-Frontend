@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { workflowApi, WorkflowStateDto, WorkflowAuditLogDto } from '@/lib/api-aisdlc';
-import { listProducts } from '@/lib/api';
+import { listProductsForDropdown } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { fmtDate } from '@/lib/splm-utils';
 import { toast } from 'sonner';
 import { ChevronRight, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DEFAULT_LIST_PAGE_SIZE, ListPaginationBar } from '@/components/listing/listPageSearch';
 
 const PHASES = ['pm_build', 'dev_handoff', 'qa_cycle', 'acceptance', 'production'] as const;
 type Phase = typeof PHASES[number];
@@ -50,11 +51,22 @@ export default function WorkflowPipelinePanel() {
   const [auditTarget, setAuditTarget] = useState<WorkflowStateDto | null>(null);
   const [auditLogs, setAuditLogs] = useState<WorkflowAuditLogDto[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [wfPage, setWfPage] = useState(1);
+
+  const wfTotalPages = Math.max(1, Math.ceil(workflows.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedWorkflows = useMemo(() => {
+    const start = (wfPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return workflows.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [workflows, wfPage]);
+
+  useEffect(() => {
+    setWfPage((p) => Math.min(Math.max(1, p), wfTotalPages));
+  }, [wfTotalPages]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [w, p] = await Promise.all([workflowApi.getAll(), listProducts()]);
+      const [w, p] = await Promise.all([workflowApi.getAll(), listProductsForDropdown()]);
       setWorkflows(w);
       setProducts(p);
     } catch (e: any) {
@@ -220,7 +232,7 @@ export default function WorkflowPipelinePanel() {
           </div>
         ) : (
           <div className="space-y-3">
-            {workflows.map((workflow) => {
+            {pagedWorkflows.map((workflow) => {
               const nextPhase = isPhase(workflow.phase) ? getNextPhase(workflow.phase) : null;
               const currentPhaseConfig = isPhase(workflow.phase) ? PHASE_CONFIG[workflow.phase] : null;
 
@@ -304,6 +316,14 @@ export default function WorkflowPipelinePanel() {
                 </div>
               );
             })}
+            <ListPaginationBar
+              page={wfPage}
+              totalPages={wfTotalPages}
+              totalItems={workflows.length}
+              pageSize={DEFAULT_LIST_PAGE_SIZE}
+              onPageChange={setWfPage}
+              disabled={loading}
+            />
           </div>
         )}
       </div>

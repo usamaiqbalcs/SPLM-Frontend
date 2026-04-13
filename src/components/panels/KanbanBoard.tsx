@@ -60,7 +60,7 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
   const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 min-h-[500px]">
+    <div className="-mx-1 flex min-h-[min(500px,70dvh)] gap-3 overflow-x-auto overscroll-x-contain px-1 pb-4 scrollbar-thin sm:mx-0 sm:px-0">
       {COLUMNS.map(col => {
         const colTasks = tasks
           .filter(t => (t.status || 'backlog') === col.id)
@@ -70,7 +70,7 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
           <div
             key={col.id}
             className={cn(
-              'flex-shrink-0 w-[260px] rounded-lg border bg-muted/30 flex flex-col transition-colors',
+              'flex w-[min(260px,calc(100vw-2.5rem))] flex-shrink-0 flex-col rounded-lg border bg-muted/30 transition-colors sm:w-[260px]',
               dragOver === col.id && 'border-primary bg-primary/5'
             )}
             onDragOver={(e) => handleDragOver(e, col.id)}
@@ -110,6 +110,11 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
                     <div className="flex items-center gap-1.5">
                       {t.story_points > 0 && (
                         <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded">{t.story_points} SP</span>
+                      )}
+                      {Number(t.ai_priority_score) > 0 && (
+                        <span className="bg-primary/15 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded border border-primary/30" title="AI priority score">
+                          AI {Number(t.ai_priority_score).toFixed(0)}
+                        </span>
                       )}
                       {t.type && (
                         <span className="bg-muted text-muted-foreground text-[10px] px-1.5 py-0.5 rounded">{t.type}</span>

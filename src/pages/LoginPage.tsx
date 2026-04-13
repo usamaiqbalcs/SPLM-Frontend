@@ -154,10 +154,10 @@ export default function LoginPage() {
         </div>
 
         {/* Security info */}
-        <div className="mt-4 text-center space-y-1">
-          <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-            <ShieldCheck size={12} />
-            TLS 1.3 · JWT bearer tokens · AES-256 encryption
+        <div className="mt-4 space-y-1 px-1 text-center">
+          <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+            <ShieldCheck size={12} className="shrink-0" />
+            <span className="min-w-0">TLS 1.3 · JWT bearer tokens · AES-256 encryption</span>
           </div>
           <div className="text-[10px] text-muted-foreground">
             NASDAQ: ZENA · FSE: 49Q · BMV: ZENA

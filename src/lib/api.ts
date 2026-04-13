@@ -57,7 +57,48 @@ const PRODUCT_LIST_ONLY_KEYS = new Set([
   'updated_at',
 ]);
 
-export const listProducts = () => productsApi.getAll();
+/** @param opts Pass `search` / `status` for server-side filtering; default returns first 100 rows (name asc). */
+export const listProducts = (opts?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+}) =>
+  productsApi
+    .getPage({
+      page: opts?.page ?? 1,
+      pageSize: Math.min(opts?.pageSize ?? 100, 100),
+      search: opts?.search,
+      status: opts?.status,
+      sortBy: opts?.sortBy,
+      sortDir: opts?.sortDir,
+    })
+    .then((r) => r.items);
+
+/** Products for dropdowns: newest first, walks pages until the catalog ends (bounded). */
+export async function listProductsForDropdown(maxItems = 5000): Promise<any[]> {
+  const pageSize = 100;
+  const out: any[] = [];
+  let page = 1;
+  const maxPages = Math.ceil(maxItems / pageSize) + 1;
+  for (;;) {
+    const r = await productsApi.getPage({
+      page,
+      pageSize,
+      sortBy: 'updated_at',
+      sortDir: 'desc',
+    });
+    out.push(...r.items);
+    if (!r.has_next_page || r.items.length < pageSize || page >= maxPages) break;
+    page++;
+  }
+  return out.slice(0, maxItems);
+}
+
+export const listProductsPage = (opts?: { page?: number; pageSize?: number; search?: string; status?: string; sortBy?: string; sortDir?: 'asc' | 'desc' }) =>
+  productsApi.getPage({ page: 1, pageSize: 10, ...opts });
 
 export const getProduct = (id: string) => productsApi.getById(id);
 
@@ -85,12 +126,22 @@ export const saveProduct = async (product: any) => {
   const strip: Record<string, unknown> = { ...product };
   for (const k of PRODUCT_LIST_ONLY_KEYS) delete strip[k];
   delete strip.id;
+  const ext = strip.external_apis ?? (strip as { externalApis?: unknown }).externalApis;
   return productsApi.create({
-    ...strip,
+    name: String(strip.name ?? '').trim(),
+    description: String(strip.description ?? ''),
     status: normalizeProductStatusForApi(strip.status as string),
     type: normalizeProductTypeForApi(strip.type as string),
+    market_category: String(strip.market_category ?? 'Enterprise SaaS'),
+    update_cadence: String(strip.update_cadence ?? 'quarterly'),
+    current_version: String(strip.current_version ?? '1.0.0'),
+    priority_score: Number(strip.priority_score ?? 0),
     customer_count: Math.max(0, Math.floor(Number(strip.customer_count ?? 0))),
-    external_apis: String(strip.external_apis ?? ''),
+    tech_stack: String(strip.tech_stack ?? ''),
+    repository: String(strip.repository ?? ''),
+    doc_url: String(strip.doc_url ?? ''),
+    icon: String(strip.icon ?? '📦'),
+    external_apis: String(ext ?? ''),
   } as any);
 };
 
@@ -98,15 +149,26 @@ export const deleteProduct = (id: string) => productsApi.delete(id);
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 
-export const listTasks = async (
-  filters?: { product_id?: string; assigned_to?: string },
-) => {
-  return tasksApi.getAll({
-    productId:  filters?.product_id,
-    assignedTo: filters?.assigned_to,
-    pageSize:   500,          // fetch a large page so panels see all tasks
+export const listTasksPage = async (opts?: {
+  page?: number;
+  pageSize?: number;
+  product_id?: string;
+  assigned_to?: string;
+  status?: string;
+  search?: string;
+}) =>
+  tasksApi.getPage({
+    page: opts?.page ?? 1,
+    pageSize: Math.min(opts?.pageSize ?? 50, 200),
+    productId: opts?.product_id,
+    assignedTo: opts?.assigned_to,
+    status: opts?.status,
+    search: opts?.search,
   });
-};
+
+/** First page (up to 200 tasks) — prefer listTasksPage for pagination. */
+export const listTasks = async (filters?: { product_id?: string; assigned_to?: string; status?: string }) =>
+  (await listTasksPage({ page: 1, pageSize: 200, ...filters })).items;
 
 export const saveTask = async (task: any) => {
   if (task.id) return tasksApi.update(task.id, task);
@@ -120,7 +182,11 @@ export const deleteTask = (id: string) => tasksApi.delete(id);
 
 // ── Developers ────────────────────────────────────────────────────────────────
 
-export const listDevelopers = () => developersApi.getAll();
+export const listDevelopers = (opts?: { page?: number; pageSize?: number; search?: string }) =>
+  developersApi.getPage({ page: opts?.page ?? 1, pageSize: Math.min(opts?.pageSize ?? 100, 100), search: opts?.search }).then((r) => r.items);
+
+export const listDevelopersPage = (opts?: { page?: number; pageSize?: number; search?: string; sortBy?: string; sortDir?: 'asc' | 'desc' }) =>
+  developersApi.getPage({ page: 1, pageSize: 10, ...opts });
 
 export const saveDeveloper = async (dev: any) => {
   if (dev.id) return developersApi.update(dev.id, dev);
@@ -131,7 +197,25 @@ export const deleteDeveloper = (id: string) => developersApi.delete(id);
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
-export const listFeedback = () => feedbackApi.getAll();
+export const listFeedbackPage = (opts?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  product_id?: string;
+  channel?: string;
+  sentiment?: string;
+}) =>
+  feedbackApi.getPage({
+    page: opts?.page ?? 1,
+    pageSize: opts?.pageSize ?? 25,
+    search: opts?.search,
+    productId: opts?.product_id,
+    channel: opts?.channel,
+    sentiment: opts?.sentiment,
+  });
+
+/** @deprecated Prefer listFeedbackPage — returns first page only (up to 100 rows). */
+export const listFeedback = () => feedbackApi.getPage({ page: 1, pageSize: 100 }).then((r) => r.items);
 
 export const saveFeedback = async (fb: any) => {
   const body = {
@@ -149,7 +233,23 @@ export const deleteFeedback = (id: string) => feedbackApi.delete(id);
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
-export const listResearch = () => researchApi.getAll();
+export const listResearchPage = (opts?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  urgency?: string;
+  product_id?: string;
+}) =>
+  researchApi.getPage({
+    page: opts?.page ?? 1,
+    pageSize: opts?.pageSize ?? 25,
+    search: opts?.search,
+    urgency: opts?.urgency,
+    productId: opts?.product_id,
+  });
+
+/** @deprecated Prefer listResearchPage — returns first page only (up to 100 rows). */
+export const listResearch = () => researchApi.getPage({ page: 1, pageSize: 100 }).then((r) => r.items);
 
 export const saveResearch = async (r: any) => {
   const body = {
@@ -167,7 +267,11 @@ export const deleteResearch = (id: string) => researchApi.delete(id);
 
 // ── Releases ──────────────────────────────────────────────────────────────────
 
-export const listReleases = () => releasesApi.getAll();
+export const listReleasesPage = (opts?: { page?: number; pageSize?: number; search?: string; status?: string }) =>
+  releasesApi.getPage({ page: opts?.page ?? 1, pageSize: opts?.pageSize ?? 25, search: opts?.search, status: opts?.status });
+
+/** @deprecated Prefer listReleasesPage — returns first page only (up to 100 rows). */
+export const listReleases = () => releasesApi.getPage({ page: 1, pageSize: 100 }).then((r) => r.items);
 
 export const saveRelease = async (r: any) => {
   if (r.id) return releasesApi.update(r.id, r);
@@ -178,14 +282,33 @@ export const deleteRelease = (id: string) => releasesApi.delete(id);
 
 // ── Deployments ───────────────────────────────────────────────────────────────
 
-export const listDeployments = async (filters?: { environment?: string; status?: string }) => {
-  const all = await deploymentsApi.getAll();
-  return (all as any[]).filter((d: any) => {
-    if (filters?.environment && d.environment !== filters.environment) return false;
-    if (filters?.status && d.status !== filters.status) return false;
-    return true;
+export const listDeploymentsPage = (opts?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  product_id?: string;
+  environment?: string;
+  status?: string;
+}) =>
+  deploymentsApi.getPage({
+    page: opts?.page ?? 1,
+    pageSize: opts?.pageSize ?? 25,
+    search: opts?.search,
+    productId: opts?.product_id,
+    environment: opts?.environment,
+    status: opts?.status,
   });
-};
+
+/** @deprecated Prefer listDeploymentsPage — returns first page only (up to 100 rows). */
+export const listDeployments = async (filters?: { environment?: string; status?: string }) =>
+  (
+    await listDeploymentsPage({
+      page: 1,
+      pageSize: 100,
+      environment: filters?.environment,
+      status: filters?.status,
+    })
+  ).items;
 
 export const createDeployment = (d: any) => deploymentsApi.create(d);
 
@@ -280,7 +403,8 @@ function mapEnvironmentRow(raw: any) {
 
   // Fast path: API uses explicit JsonPropertyName snake_case on EnvironmentDto
   if ('product_id' in o || 'server_host' in o || 'environment' in o) {
-    const notes = asStr(o.env_vars_notes ?? o.notes);
+    const blob = asStr(o.env_vars_notes ?? o.notes);
+    const { notes, env_vars } = unpackEnvironmentBlob(blob);
     return {
       ...o,
       id: asStr(o.id),
@@ -295,7 +419,7 @@ function mapEnvironmentRow(raw: any) {
       health_check_url: asStr(o.health_check_url),
       environment: asStr(o.environment),
       notes,
-      env_vars_encrypted: notes,
+      env_vars_encrypted: env_vars,
     };
   }
 
@@ -308,6 +432,7 @@ function mapEnvironmentRow(raw: any) {
   const notesVal = asStr(
     fromBucket(b, 'envvarsnotes', 'env_vars_notes', 'EnvVarsNotes', 'notes', 'Notes'),
   );
+  const { notes: n2, env_vars: e2 } = unpackEnvironmentBlob(notesVal);
 
   return {
     ...o,
@@ -322,8 +447,29 @@ function mapEnvironmentRow(raw: any) {
     deploy_path: asStr(fromBucket(b, 'deploypath', 'deploy_path', 'DeployPath')),
     health_check_url: asStr(fromBucket(b, 'healthcheckurl', 'health_check_url', 'HealthCheckUrl')),
     environment: envVal,
-    notes: notesVal,
-    env_vars_encrypted: notesVal,
+    notes: n2,
+    env_vars_encrypted: e2,
+  };
+}
+
+/** Stored in `environments.notes` / API `env_vars_notes`: human notes then env block. */
+const SPLM_ENV_NOTES_SEP = '\n<<<SPLM_ENV_VARS>>>\n';
+
+function packEnvironmentNotes(notes: string, envVars: string): string {
+  const n = String(notes ?? '').trimEnd();
+  const e = String(envVars ?? '').trimEnd();
+  if (!e) return n;
+  if (!n) return e;
+  return `${n}${SPLM_ENV_NOTES_SEP}${e}`;
+}
+
+function unpackEnvironmentBlob(blob: string): { notes: string; env_vars: string } {
+  const raw = String(blob ?? '');
+  const idx = raw.indexOf(SPLM_ENV_NOTES_SEP);
+  if (idx < 0) return { notes: raw.trim(), env_vars: '' };
+  return {
+    notes: raw.slice(0, idx).trim(),
+    env_vars: raw.slice(idx + SPLM_ENV_NOTES_SEP.length).trim(),
   };
 }
 
@@ -348,11 +494,11 @@ export function normalizeEnvironmentForForm(row: any) {
   const id = m.id != null && m.id !== '' ? normalizeGuidString(String(m.id)) : '';
   const product_id =
     m.product_id != null && m.product_id !== '' ? normalizeGuidString(String(m.product_id)) : '';
-  // Single DB column `notes` → API `env_vars_notes`; keep both form textareas in sync
   const notesBlob =
-    [m.env_vars_encrypted, m.notes, m.env_vars_notes]
+    [m.env_vars_notes, m.notes, m.env_vars_encrypted]
       .map((x: unknown) => String(x ?? '').trim())
       .find(s => s.length > 0) ?? '';
+  const { notes: nPart, env_vars: ePart } = unpackEnvironmentBlob(notesBlob);
   return {
     id,
     product_id,
@@ -366,8 +512,8 @@ export function normalizeEnvironmentForForm(row: any) {
     git_branch: String(m.git_branch || 'main'),
     deploy_path: String(m.deploy_path ?? ''),
     health_check_url: String(m.health_check_url ?? ''),
-    notes: notesBlob,
-    env_vars_encrypted: notesBlob,
+    notes: nPart,
+    env_vars_encrypted: ePart,
   };
 }
 
@@ -387,6 +533,10 @@ function mergeEnvironmentSources(listRow: any, apiRow: any) {
     if (sb !== '') return b;
     return a;
   };
+  const blobB = s(B.env_vars_notes) || packEnvironmentNotes(s(B.notes), s(B.env_vars_encrypted));
+  const blobA = s(A.env_vars_notes) || packEnvironmentNotes(s(A.notes), s(A.env_vars_encrypted));
+  const mergedBlob = s(blobB) !== '' ? blobB : blobA;
+  const { notes: nM, env_vars: eM } = unpackEnvironmentBlob(mergedBlob);
   return {
     ...A,
     ...B,
@@ -401,16 +551,8 @@ function mergeEnvironmentSources(listRow: any, apiRow: any) {
     git_branch: s(B.git_branch) || s(A.git_branch) || 'main',
     deploy_path: coalesce(B.deploy_path, A.deploy_path),
     health_check_url: coalesce(B.health_check_url, A.health_check_url),
-    notes:
-      s(B.env_vars_encrypted) ||
-      s(B.notes) ||
-      s(A.env_vars_encrypted) ||
-      s(A.notes),
-    env_vars_encrypted:
-      s(B.env_vars_encrypted) ||
-      s(B.notes) ||
-      s(A.env_vars_encrypted) ||
-      s(A.notes),
+    notes: nM,
+    env_vars_encrypted: eM,
   };
 }
 
@@ -430,9 +572,10 @@ export const getEnvironment = async (id: string, listFallback?: any) => {
 };
 
 export const saveEnvironment = async (env: any) => {
-  const envVarsNotes = [env.notes, env.env_vars_encrypted]
-    .filter((x) => x != null && String(x).trim() !== '')
-    .join('\n\n');
+  const envVarsNotes = packEnvironmentNotes(
+    String(env.notes ?? ''),
+    String(env.env_vars_encrypted ?? ''),
+  );
 
   const rowId = env.id ?? env.Id;
   if (rowId) {
@@ -464,8 +607,13 @@ export const saveEnvironment = async (env: any) => {
     throw new Error('Server host is required for a new environment.');
   }
 
+  const productId = normalizeGuidString(String(env.product_id ?? '').trim().replace(/^\{|\}$/g, ''));
+  if (!productId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) {
+    throw new Error('Select a valid product.');
+  }
+
   return environmentsApi.create({
-    product_id: env.product_id,
+    product_id: productId,
     environment: envName,
     server_host: env.server_host.trim(),
     server_url: (env.server_url ?? '').trim(),
@@ -489,19 +637,23 @@ export const getAnalytics = async () => {
     return await analyticsApi.getDashboard();
   } catch {
     // Fallback: compute from tasks + products if analytics endpoint not available
-    const [products, tasks, deployments, developers] = await Promise.all([
-      productsApi.getAll().catch(() => [] as any[]),
-      tasksApi.getAll({ pageSize: 500 }).catch(() => [] as any[]),
-      deploymentsApi.getAll().catch(() => [] as any[]),
-      developersApi.getAll().catch(() => [] as any[]),
+    const [pr, tr, depPage, dr] = await Promise.all([
+      productsApi.getPage({ page: 1, pageSize: 1 }).catch(() => ({ items: [], total_count: 0 } as any)),
+      tasksApi.getPage({ page: 1, pageSize: 200 }).catch(() => ({ items: [], total_count: 0 } as any)),
+      deploymentsApi.getPage({ page: 1, pageSize: 100 }).catch(() => ({ items: [] } as any)),
+      developersApi.getPage({ page: 1, pageSize: 1 }).catch(() => ({ items: [], total_count: 0 } as any)),
     ]);
+    const products: any[] = [];
+    const tasks = tr.items ?? [];
+    const developers: any[] = [];
 
     const today = new Date().toISOString().split('T')[0];
     const openTasks        = (tasks as any[]).filter(t => !['done', 'cancelled'].includes(t.status || ''));
     const criticalTasks    = openTasks.filter(t => t.priority === 'critical');
     const overdueTasks     = openTasks.filter(t => t.is_overdue);
-    const deploysToday     = (deployments as any[]).filter(d => (d.created_at || '').startsWith(today));
-    const failedDeploys    = deploysToday.filter(d => d.status === 'failed');
+    const deploymentsList = (depPage as any).items ?? [];
+    const deploysToday     = deploymentsList.filter((d: any) => (d.created_at || '').startsWith(today));
+    const failedDeploys    = deploysToday.filter((d: any) => d.status === 'failed');
 
     const taskByStatus: Record<string, number> = {};
     (tasks as any[]).forEach(t => {
@@ -510,17 +662,17 @@ export const getAnalytics = async () => {
     });
 
     return {
-      products:         (products as any[]).length,
-      active_products:  (products as any[]).filter(p => p.status === 'active').length,
+      products:         pr.total_count ?? 0,
+      active_products:  pr.total_count ?? 0,
       open_tasks:       openTasks.length,
       critical_tasks:   criticalTasks.length,
       overdue_tasks:    overdueTasks.length,
       total_versions:   0,
       deploys_today:    deploysToday.length,
       failed_deploys:   failedDeploys.length,
-      developers:       (developers as any[]).length,
+      developers:       dr.total_count ?? 0,
       avg_priority:     0,
-      top_products:     (products as any[]).slice(0, 5),
+      top_products:     [] as any[],
       task_by_status:   taskByStatus,
     };
   }

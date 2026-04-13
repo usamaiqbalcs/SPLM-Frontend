@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { listProducts, getProduct, saveProduct, deleteProduct } from '@/lib/api';
+import { listProductsPage, getProduct, saveProduct, deleteProduct } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { StatusBadge, PriorityBar } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,12 +42,39 @@ export default function ProductsPanel() {
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('');
+  const debouncedFilter = useListPageSearchDebounce(filter);
   const [statusF, setStatusF] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10;
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
 
-  const load = () => { setLoading(true); listProducts().then(setItems).finally(() => setLoading(false)); };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedFilter, statusF]);
+
+  const load = () => {
+    setLoading(true);
+    listProductsPage({
+      page,
+      pageSize,
+      search: debouncedFilter || undefined,
+      status: statusF || undefined,
+      sortBy: 'name',
+      sortDir: 'asc',
+    })
+      .then((r) => {
+        setItems(r.items);
+        setTotalPages(Math.max(1, r.total_pages));
+        setTotalCount(r.total_count);
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    load();
+  }, [page, debouncedFilter, statusF]);
 
   const blank = {
     name: '',
@@ -76,11 +104,6 @@ export default function ProductsPanel() {
     catch (e: any) { toast.error(e.message); }
     finally { setDeleteId(null); }
   };
-
-  const filtered = items.filter(p => {
-    const q = filter.toLowerCase();
-    return (!q || (p.name || '').toLowerCase().includes(q)) && (!statusF || p.status === statusF);
-  });
 
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
@@ -119,9 +142,14 @@ export default function ProductsPanel() {
       />
       <div className="bg-card rounded-lg border p-5">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">📦 Products ({filtered.length})</h3>
+          <h3 className="text-lg font-bold text-primary">
+            📦 Products
+            <span className="text-muted-foreground font-normal text-sm ml-2">
+              ({items.length} of {totalCount.toLocaleString()})
+            </span>
+          </h3>
           <div className="flex gap-2 flex-wrap">
-            <Input className="w-48" placeholder="Search…" value={filter} onChange={e => setFilter(e.target.value)} />
+            <ListPageSearchInput value={filter} onChange={setFilter} />
             <select className="border rounded-md px-3 py-2 text-sm bg-background" value={statusF} onChange={e => setStatusF(e.target.value)}>
               <option value="">All Statuses</option>
               {['active', 'maintenance', 'sunset', 'archived'].map(o => <option key={o}>{o}</option>)}
@@ -130,7 +158,7 @@ export default function ProductsPanel() {
           </div>
         </div>
         {loading ? <TableSkeleton /> :
-          filtered.length === 0 ? (
+          items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <span className="text-4xl mb-3">📦</span>
               <p className="font-medium">No products found</p>
@@ -140,7 +168,7 @@ export default function ProductsPanel() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-muted">{['Product', 'Version', 'Status', 'Priority', 'Cadence', 'Customers', 'Actions'].map(h => <th key={h} className="text-left px-3 py-2 font-bold text-xs text-foreground">{h}</th>)}</tr></thead>
-                <tbody>{filtered.map(p => (
+                <tbody>{items.map(p => (
                   <tr key={p.id} className="border-b border-muted hover:bg-muted/50 transition-colors group">
                     <td className="px-3 py-3"><div className="font-semibold">{p.name}</div><div className="text-xs text-muted-foreground truncate max-w-[200px]">{p.description}</div></td>
                     <td className="px-3 py-3"><code className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">{p.current_version ? `v${p.current_version}` : '—'}</code></td>
@@ -180,6 +208,21 @@ export default function ProductsPanel() {
               </table>
             </div>
         }
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

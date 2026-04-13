@@ -1,5 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { analyzerReportsApi, qaCyclesApi, AnalyzerReportDto, QaCycleDto } from '@/lib/api-aisdlc';
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  ListPageSearchInput,
+  ListPaginationBar,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +41,8 @@ export default function AIAnalyzerPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [selectedCycle, setSelectedCycle] = useState<string>('');
+  const [listSearch, setListSearch] = useState('');
+  const debouncedListSearch = useListPageSearchDebounce(listSearch);
 
   const load = () => {
     setLoading(true);
@@ -84,17 +93,54 @@ export default function AIAnalyzerPanel() {
 
   const parseChangedFiles = (jsonStr: string): ChangedFile[] => {
     try {
-      return JSON.parse(jsonStr);
+      const raw = JSON.parse(jsonStr);
+      if (!Array.isArray(raw)) return [];
+      return raw.map((x: Record<string, unknown>) => ({
+        file_name: String(x.file_name ?? x.file ?? ''),
+        lines_added: Number(x.lines_added ?? x.additions ?? 0),
+        lines_removed: Number(x.lines_removed ?? x.deletions ?? 0),
+      }));
     } catch {
       return [];
     }
   };
 
+  const filteredReports = useMemo(() => {
+    const q = debouncedListSearch;
+    if (!q.trim()) return reports;
+    return reports.filter(r =>
+      rowMatchesListSearch(q, [
+        r.report_reference,
+        r.product_name,
+        r.status,
+        r.overall_confidence,
+        r.diff_summary,
+        r.notes,
+        r.analyzer_engine,
+      ]),
+    );
+  }, [reports, debouncedListSearch]);
+
+  const [reportListPage, setReportListPage] = useState(1);
+  const reportTotalPages = Math.max(1, Math.ceil(filteredReports.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedFilteredReports = useMemo(() => {
+    const start = (reportListPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return filteredReports.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [filteredReports, reportListPage]);
+
+  useEffect(() => {
+    setReportListPage(1);
+  }, [debouncedListSearch]);
+
+  useEffect(() => {
+    setReportListPage((p) => Math.min(Math.max(1, p), reportTotalPages));
+  }, [reportTotalPages]);
+
   const stats = useMemo(() => {
     const counts: Record<string, number> = { pending: 0, running: 0, completed: 0, failed: 0 };
-    reports.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-    return { ...counts, total: reports.length };
-  }, [reports]);
+    filteredReports.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+    return { ...counts, total: filteredReports.length };
+  }, [filteredReports]);
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -155,9 +201,17 @@ export default function AIAnalyzerPanel() {
 
       {/* ── Main panel ── */}
       <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
           <h3 className="text-lg font-bold text-primary">⚡ Backend AI Analyzer Reports</h3>
-          <Button onClick={() => setTriggerDialogOpen(true)}>🔧 Trigger New Analysis</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ListPageSearchInput
+              value={listSearch}
+              onChange={setListSearch}
+              className="w-full sm:w-52"
+              aria-label="Search analyzer reports"
+            />
+            <Button onClick={() => setTriggerDialogOpen(true)}>🔧 Trigger New Analysis</Button>
+          </div>
         </div>
 
         {loading ? (
@@ -168,9 +222,14 @@ export default function AIAnalyzerPanel() {
             <p className="font-medium">No analyzer reports</p>
             <p className="text-xs mt-1">Trigger a new analysis to get started</p>
           </div>
+        ) : filteredReports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <p className="font-medium">No reports match your search</p>
+            <p className="text-xs mt-1">Clear the search box to see all reports</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {reports.map(report => {
+            {pagedFilteredReports.map(report => {
               const statusConfig = getStatusConfig(report.status);
               const confidenceConfig = getConfidenceConfig(report.overall_confidence);
               const isExpanded = expandedId === report.id;
@@ -200,6 +259,9 @@ export default function AIAnalyzerPanel() {
                             {statusConfig.icon}
                           </span>
                           <span className="text-xs text-muted-foreground">{report.product_name}</span>
+                          {report.task_title && (
+                            <Badge variant="outline" className="text-[10px]">Task: {report.task_title}</Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                           <span>v{report.product_name}</span>
@@ -326,6 +388,14 @@ export default function AIAnalyzerPanel() {
                 </div>
               );
             })}
+            <ListPaginationBar
+              page={reportListPage}
+              totalPages={reportTotalPages}
+              totalItems={filteredReports.length}
+              pageSize={DEFAULT_LIST_PAGE_SIZE}
+              onPageChange={setReportListPage}
+              disabled={loading}
+            />
           </div>
         )}
       </div>

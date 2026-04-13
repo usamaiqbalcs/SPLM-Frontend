@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { listSprints, saveSprint, deleteSprint, assignTaskToSprint } from '@/lib/api-sprints';
-import { listTasks, listProducts, listDevelopers } from '@/lib/api';
+import { listTasks, listProductsForDropdown, listDevelopers } from '@/lib/api';
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  ListPageSearchInput,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -12,11 +18,14 @@ import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, Target, Zap } from 'lucide-react';
+import { Calendar, Target, Zap, Sparkles } from 'lucide-react';
+import { taskAiApi } from '@/lib/api-aisdlc';
+import { Progress } from '@/components/ui/progress';
 
 export default function SprintsPanel() {
   const { can, user } = useAuth();
   const [sprints, setSprints] = useState<any[]>([]);
+  const [sprintPage, setSprintPage] = useState(1);
   const [tasks, setTasks] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [developers, setDevelopers] = useState<any[]>([]);
@@ -25,14 +34,44 @@ export default function SprintsPanel() {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [expandedSprint, setExpandedSprint] = useState<string | null>(null);
+  const [listSearch, setListSearch] = useState('');
+  const [bulkAi, setBulkAi] = useState<{
+    sprintId: string;
+    current: number;
+    total: number;
+    lines: string[];
+  } | null>(null);
+  const [sprintScoreBusy, setSprintScoreBusy] = useState<string | null>(null);
+  const debouncedListSearch = useListPageSearchDebounce(listSearch);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listSprints(), listTasks(), listProducts(), listDevelopers()])
+    Promise.all([listSprints(), listTasks(), listProductsForDropdown(), listDevelopers()])
       .then(([s, t, p, d]) => { setSprints(s); setTasks(t); setProducts(p); setDevelopers(d); })
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const filteredSprints = useMemo(() => {
+    if (!debouncedListSearch) return sprints;
+    return sprints.filter((s: any) =>
+      rowMatchesListSearch(debouncedListSearch, [s.name, s.goal, s.status]),
+    );
+  }, [sprints, debouncedListSearch]);
+
+  const sprintTotalPages = Math.max(1, Math.ceil(filteredSprints.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedSprints = useMemo(() => {
+    const start = (sprintPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return filteredSprints.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [filteredSprints, sprintPage]);
+
+  useEffect(() => {
+    setSprintPage((p) => Math.min(Math.max(1, p), sprintTotalPages));
+  }, [sprintTotalPages]);
+
+  useEffect(() => {
+    setSprintPage(1);
+  }, [debouncedListSearch]);
 
   const blank = { name: '', goal: '', status: 'planning', start_date: '', end_date: '' };
 
@@ -88,6 +127,41 @@ export default function SprintsPanel() {
 
   const velocityData = getVelocityData();
 
+  const runBulkTaskAnalyze = async (sprintId: string, sTasks: any[]) => {
+    if (!sTasks.length) {
+      toast.error('No tasks in this sprint');
+      return;
+    }
+    const lines: string[] = [];
+    setBulkAi({ sprintId, current: 0, total: sTasks.length, lines: [] });
+    for (let i = 0; i < sTasks.length; i++) {
+      const t = sTasks[i];
+      try {
+        await taskAiApi.analyzeTask(t.id);
+        lines.push(`✓ ${t.title}`);
+      } catch (e: any) {
+        lines.push(`✗ ${t.title}: ${e.message || 'failed'}`);
+      }
+      setBulkAi({ sprintId, current: i + 1, total: sTasks.length, lines: [...lines] });
+    }
+    toast.success('Bulk task analysis finished');
+    setBulkAi(null);
+    load();
+  };
+
+  const runSprintScoreAll = async (sprintId: string) => {
+    try {
+      setSprintScoreBusy(sprintId);
+      const n = await taskAiApi.scoreSprintPriorities(sprintId);
+      toast.success(n > 0 ? `Scored ${n} tasks` : 'No tasks to score');
+      load();
+    } catch (e: any) {
+      toast.error(e.message || 'Scoring failed');
+    } finally {
+      setSprintScoreBusy(null);
+    }
+  };
+
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
       <div className="flex justify-between items-center mb-5">
@@ -135,9 +209,23 @@ export default function SprintsPanel() {
       )}
 
       <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-primary">🏃 Sprints ({sprints.length})</h3>
-          {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Sprint</Button>}
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <h3 className="text-lg font-bold text-primary">
+            🏃 Sprints ({debouncedListSearch ? `${filteredSprints.length} / ${sprints.length}` : sprints.length})
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-36 sm:w-44" />
+            {sprintTotalPages > 1 && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Button type="button" variant="outline" size="sm" disabled={sprintPage <= 1}
+                  onClick={() => setSprintPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                <span className="tabular-nums px-1">{sprintPage}/{sprintTotalPages}</span>
+                <Button type="button" variant="outline" size="sm" disabled={sprintPage >= sprintTotalPages}
+                  onClick={() => setSprintPage((p) => p + 1)}>Next</Button>
+              </div>
+            )}
+            {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Sprint</Button>}
+          </div>
         </div>
         {loading ? <TableSkeleton /> :
           sprints.length === 0 ? (
@@ -146,9 +234,14 @@ export default function SprintsPanel() {
               <p className="font-medium">No sprints</p>
               <p className="text-xs mt-1">Create a sprint to organize work into iterations</p>
             </div>
+          ) : filteredSprints.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <span className="text-4xl mb-3">🔎</span>
+              <p className="font-medium">No sprints match your search</p>
+            </div>
           ) :
             <div className="space-y-3">
-              {sprints.map(s => {
+              {pagedSprints.map(s => {
                 const sTasks = sprintTasks(s.id);
                 const totalSP = sTasks.reduce((sum: number, t: any) => sum + (t.story_points || 0), 0);
                 const doneSP = sTasks.filter(t => t.status === 'done').reduce((sum: number, t: any) => sum + (t.story_points || 0), 0);
@@ -187,9 +280,54 @@ export default function SprintsPanel() {
 
                     {isExpanded && (
                       <div className="border-t px-4 py-3 bg-muted/20">
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-2">
                           <span className="text-xs font-bold text-muted-foreground uppercase">Sprint Tasks</span>
+                          {can('edit') && sTasks.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="gap-1 text-[10px] h-7"
+                                disabled={!!bulkAi || sprintScoreBusy === s.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runBulkTaskAnalyze(s.id, sTasks);
+                                }}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                {bulkAi?.sprintId === s.id ? 'AI analyze…' : 'AI analyze all tasks'}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="text-[10px] h-7"
+                                disabled={!!bulkAi || sprintScoreBusy === s.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runSprintScoreAll(s.id);
+                                }}
+                              >
+                                {sprintScoreBusy === s.id ? 'Scoring…' : 'Score all priorities'}
+                              </Button>
+                            </div>
+                          )}
                         </div>
+                        {bulkAi?.sprintId === s.id && (
+                          <div className="mb-3 rounded-md border bg-background p-2 text-[10px] space-y-1">
+                            <div className="flex justify-between text-muted-foreground">
+                              <span>Sequential task analysis</span>
+                              <span>{bulkAi.current}/{bulkAi.total}</span>
+                            </div>
+                            <Progress value={bulkAi.total ? (bulkAi.current / bulkAi.total) * 100 : 0} className="h-1.5" />
+                            <div className="max-h-24 overflow-y-auto font-mono text-[10px] text-foreground/90">
+                              {bulkAi.lines.map((ln, i) => (
+                                <div key={i}>{ln}</div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {sTasks.length === 0 ? (
                           <p className="text-xs text-muted-foreground py-2">No tasks assigned. Drag tasks from backlog below.</p>
                         ) : (

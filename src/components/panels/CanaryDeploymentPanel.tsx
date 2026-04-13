@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { listDeployments, createDeployment, listProducts } from '@/lib/api';
+import { listDeploymentsPage, createDeployment, listProductsForDropdown } from '@/lib/api';
 import { netFetch } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -69,16 +69,18 @@ export default function CanaryDeploymentPanel() {
     canary_notes: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [detailDeployment, setDetailDeployment] = useState<Deployment | null>(null);
 
   const load = async () => {
     try {
       setLoading(true);
-      const [deps, prods] = await Promise.all([
-        listDeployments(),
-        listProducts(),
+      const [depPage, prods] = await Promise.all([
+        listDeploymentsPage({ page: 1, pageSize: 100 }),
+        listProductsForDropdown(),
       ]);
+      const deps = (depPage.items ?? []) as Deployment[];
       // Show only production/canary deployments
-      const filtered = (deps as Deployment[]).filter(
+      const filtered = deps.filter(
         d => d.environment === 'production' || d.canary_stage === 'canary',
       );
       setDeployments(filtered);
@@ -223,6 +225,9 @@ export default function CanaryDeploymentPanel() {
                             )}
                           </div>
                           <div className="flex gap-2 flex-shrink-0">
+                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => setDetailDeployment(d)}>
+                              Details
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -270,6 +275,9 @@ export default function CanaryDeploymentPanel() {
                       className="flex items-center gap-3 p-3 bg-card border rounded-lg text-sm"
                     >
                       <Rocket className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <Button type="button" size="sm" variant="ghost" className="text-[10px] h-7 px-2" onClick={() => setDetailDeployment(d)}>
+                        View
+                      </Button>
                       <span className="font-medium flex-1">{product?.name ?? d.product_id}</span>
                       <Badge variant="outline" className="text-xs">v{d.version}</Badge>
                       {d.canary_stage === 'full' && (
@@ -365,6 +373,48 @@ export default function CanaryDeploymentPanel() {
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               Create Canary Deployment
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detailDeployment} onOpenChange={(o) => !o && setDetailDeployment(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Deployment details</DialogTitle>
+          </DialogHeader>
+          {detailDeployment && (
+            <div className="space-y-2 text-sm">
+              {[
+                ['Product', detailDeployment.product_name ?? detailDeployment.product_id],
+                ['Version', detailDeployment.version],
+                ['Environment', detailDeployment.environment],
+                ['Status', detailDeployment.status],
+                ['Deploy type', detailDeployment.deploy_type],
+                ['Branch', detailDeployment.branch ?? '—'],
+                ['Commit', detailDeployment.commit_sha ?? '—'],
+                ['Canary stage', detailDeployment.canary_stage ?? '—'],
+                ['Rollout %', String(detailDeployment.rollout_percentage ?? '—')],
+                ['Monitoring (hrs)', String(detailDeployment.monitoring_window_hrs ?? '—')],
+                ['Canary promoted at', detailDeployment.canary_promoted_at
+                  ? new Date(detailDeployment.canary_promoted_at).toLocaleString()
+                  : '—'],
+                ['Created', new Date(detailDeployment.created_at).toLocaleString()],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4 border-b border-border/60 py-1">
+                  <span className="text-muted-foreground">{k}</span>
+                  <span className="font-medium text-right break-all">{v}</span>
+                </div>
+              ))}
+              {detailDeployment.canary_notes && (
+                <div className="pt-2">
+                  <div className="text-xs text-muted-foreground mb-1">Canary notes</div>
+                  <p className="text-sm whitespace-pre-wrap">{detailDeployment.canary_notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailDeployment(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

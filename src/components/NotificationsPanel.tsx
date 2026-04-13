@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { tasksApi, deploymentsApi } from '@/lib/apiClient';
+import { tasksApi } from '@/lib/apiClient';
+import { listDeploymentsPage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { fmtDateTime } from '@/lib/splm-utils';
 import { Bell, AlertTriangle, Rocket, Zap, X, CheckCheck } from 'lucide-react';
@@ -49,15 +50,13 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
   const loadNotifications = async () => {
     setLoading(true);
     try {
-      const [overdueTasks, allDeployments, criticalTasks] = await Promise.all([
+      const [overdueTasks, failedPage, criticalTasks] = await Promise.all([
         tasksApi.getAll({ isOverdue: true, pageSize: 5 }),
-        deploymentsApi.getAll().catch(() => [] as any[]),
+        listDeploymentsPage({ page: 1, pageSize: 10, status: 'failed' }).catch(() => ({ items: [] as any[] })),
         tasksApi.getAll({ priority: 'critical', pageSize: 5 }),
       ]);
 
-      const failedDeploys = (allDeployments as any[])
-        .filter((d: any) => d.status === 'failed')
-        .slice(0, 5);
+      const failedDeploys = (failedPage.items ?? []).slice(0, 5);
 
       const notifs: Notification[] = [
         ...overdueTasks.map(t => ({
@@ -102,7 +101,7 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
   return (
     <div
       ref={panelRef}
-      className="absolute right-2 top-[52px] z-50 w-[360px] bg-card rounded-xl shadow-2xl border overflow-hidden animate-scale-in"
+      className="absolute left-2 right-2 top-[52px] z-50 mx-auto max-h-[min(85dvh,560px)] w-auto max-w-[360px] overflow-hidden rounded-xl border bg-card shadow-2xl animate-scale-in sm:left-auto sm:right-3 sm:mx-0 sm:w-[min(360px,calc(100vw-1.5rem))]"
     >
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between bg-card">

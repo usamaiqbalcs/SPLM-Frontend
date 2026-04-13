@@ -1,6 +1,13 @@
-import { useState, useEffect } from 'react';
-import { qaCyclesApi, qaIssuesApi, QaCycleDto, QaIssueDto } from '@/lib/api-aisdlc';
-import { listProducts } from '@/lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import { analyzerReportsApi, qaCyclesApi, qaIssuesApi, QaCycleDto, QaIssueDto } from '@/lib/api-aisdlc';
+import { listProductsForDropdown } from '@/lib/api';
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  ListPageSearchInput,
+  ListPaginationBar,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,11 +97,43 @@ export default function QACyclesPanel() {
     fix_applied: false,
   });
   const [issueCreating, setIssueCreating] = useState(false);
+  const [cycleSearch, setCycleSearch] = useState('');
+  const [analyzerBusyCycleId, setAnalyzerBusyCycleId] = useState<string | null>(null);
+  const debouncedCycleSearch = useListPageSearchDebounce(cycleSearch);
+
+  const filteredCycles = useMemo(() => {
+    const q = debouncedCycleSearch;
+    if (!q.trim()) return cycles;
+    return cycles.filter((c) =>
+      rowMatchesListSearch(q, [
+        c.product_name,
+        c.version_label,
+        String(c.cycle_number),
+        c.status,
+        c.notes,
+      ]),
+    );
+  }, [cycles, debouncedCycleSearch]);
+
+  const [cycleListPage, setCycleListPage] = useState(1);
+  const cycleTotalPages = Math.max(1, Math.ceil(filteredCycles.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedFilteredCycles = useMemo(() => {
+    const start = (cycleListPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return filteredCycles.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [filteredCycles, cycleListPage]);
+
+  useEffect(() => {
+    setCycleListPage(1);
+  }, [debouncedCycleSearch]);
+
+  useEffect(() => {
+    setCycleListPage((p) => Math.min(Math.max(1, p), cycleTotalPages));
+  }, [cycleTotalPages]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [c, p] = await Promise.all([qaCyclesApi.getAll(), listProducts()]);
+      const [c, p] = await Promise.all([qaCyclesApi.getAll(), listProductsForDropdown()]);
       setCycles(c);
       setProducts(p);
     } catch (e: any) {
@@ -315,8 +354,8 @@ export default function QACyclesPanel() {
           <DialogHeader>
             <DialogTitle>Log QA Issue</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto py-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-sm font-medium mb-1 block">Title *</Label>
                 <Input
@@ -352,7 +391,7 @@ export default function QACyclesPanel() {
                 rows={3}
               />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <Label className="text-sm font-medium mb-1 block">Severity</Label>
                 <select
@@ -464,14 +503,25 @@ export default function QACyclesPanel() {
 
       {/* Main Panel */}
       <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-5">
-          <h3 className="text-lg font-bold text-primary">🧪 QA Cycles ({cycles.length})</h3>
-          {can('edit') && (
-            <Button onClick={() => setCreateCycleOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              New Cycle
-            </Button>
-          )}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
+          <h3 className="text-lg font-bold text-primary">
+            🧪 QA Cycles (
+            {debouncedCycleSearch.trim() ? `${filteredCycles.length} / ${cycles.length}` : cycles.length})
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <ListPageSearchInput
+              value={cycleSearch}
+              onChange={setCycleSearch}
+              className="w-full sm:w-52"
+              aria-label="Search QA cycles"
+            />
+            {can('edit') && (
+              <Button onClick={() => setCreateCycleOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                New Cycle
+              </Button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -482,9 +532,14 @@ export default function QACyclesPanel() {
             <p className="font-medium">No QA cycles</p>
             <p className="text-xs mt-1">Create a new cycle to start QA testing</p>
           </div>
+        ) : filteredCycles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <p className="font-medium">No cycles match your search</p>
+            <p className="text-xs mt-1">Clear the search box to see all cycles</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {cycles.map((cycle) => (
+            {pagedFilteredCycles.map((cycle) => (
               <div key={cycle.id}>
                 {/* Cycle Row */}
                 <div
@@ -520,6 +575,33 @@ export default function QACyclesPanel() {
                 {/* Issues Table - Expanded */}
                 {expandedCycleId === cycle.id && (
                   <div className="border-l border-r border-b rounded-b-lg p-4 bg-muted/10">
+                    {can('edit') && (
+                      <div className="flex justify-end mb-3">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={analyzerBusyCycleId === cycle.id}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setAnalyzerBusyCycleId(cycle.id);
+                            try {
+                              await analyzerReportsApi.trigger({
+                                qa_cycle_id: cycle.id,
+                                product_id: cycle.product_id,
+                              });
+                              toast.success('Analyzer completed for this cycle');
+                            } catch (err: any) {
+                              toast.error(err.message || 'Analyzer failed');
+                            } finally {
+                              setAnalyzerBusyCycleId(null);
+                            }
+                          }}
+                        >
+                          {analyzerBusyCycleId === cycle.id ? 'Running analyzer…' : 'Run cycle analyzer'}
+                        </Button>
+                      </div>
+                    )}
                     {issueLoading[cycle.id] ? (
                       <div className="py-4 text-center text-muted-foreground text-sm">
                         Loading issues…
@@ -623,6 +705,14 @@ export default function QACyclesPanel() {
                 )}
               </div>
             ))}
+            <ListPaginationBar
+              page={cycleListPage}
+              totalPages={cycleTotalPages}
+              totalItems={filteredCycles.length}
+              pageSize={DEFAULT_LIST_PAGE_SIZE}
+              onPageChange={setCycleListPage}
+              disabled={loading}
+            />
           </div>
         )}
       </div>

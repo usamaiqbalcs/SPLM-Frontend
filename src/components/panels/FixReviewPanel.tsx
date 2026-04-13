@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { qaIssuesApi, qaCyclesApi, QaIssueDto, QaCycleDto } from '@/lib/api-aisdlc';
-import { listProducts } from '@/lib/api';
+import { listProductsForDropdown } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -49,17 +49,14 @@ export default function FixReviewPanel() {
   const load = async () => {
     setLoading(true);
     try {
-      const [c, p] = await Promise.all([qaCyclesApi.getAll(), listProducts()]);
+      const [c, p, issueRows] = await Promise.all([
+        qaCyclesApi.getAll(),
+        listProductsForDropdown(),
+        qaIssuesApi.getForFixReview(),
+      ]);
       setCycles(c);
       setProducts(p);
-
-      // Load all issues across all cycles
-      const allIssues: QaIssueDto[] = [];
-      for (const cycle of c) {
-        const cycleIssues = await qaIssuesApi.getByCycle(cycle.id);
-        allIssues.push(...cycleIssues);
-      }
-      setIssues(allIssues);
+      setIssues(issueRows);
     } catch (e: any) {
       toast.error(e.message);
     } finally {

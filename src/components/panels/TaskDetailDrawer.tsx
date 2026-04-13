@@ -29,8 +29,9 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   X, Send, Trash2, CheckSquare, Square, Plus,
-  MessageSquare, ListChecks, Clock, User, Package,
+  MessageSquare, ListChecks, Clock, User, Package, Sparkles,
 } from 'lucide-react';
+import { qaCyclesApi, taskAiApi, type QaCycleDto } from '@/lib/api-aisdlc';
 
 interface TaskDetailDrawerProps {
   task: any;
@@ -62,8 +63,11 @@ export default function TaskDetailDrawer({
   const [newSubtask, setNewSubtask] = useState('');
   const [storyPoints, setStoryPoints] = useState(task.story_points || 0);
   const [sending, setSending]       = useState(false);
-  const [activeTab, setActiveTab]   = useState<'comments' | 'subtasks' | 'details'>('comments');
+  const [activeTab, setActiveTab]   = useState<'comments' | 'subtasks' | 'details' | 'ai'>('comments');
   const commentsEndRef              = useRef<HTMLDivElement>(null);
+  const [qaCycles, setQaCycles]    = useState<QaCycleDto[]>([]);
+  const [qaCycleId, setQaCycleId]   = useState<string>('');
+  const [aiBusy, setAiBusy]         = useState<'analyze' | 'score' | null>(null);
 
   // Helpers that look up names from the passed-in props
   const pname = (id: string) => products.find(p => p.id === id)?.name || '—';
@@ -74,6 +78,24 @@ export default function TaskDetailDrawer({
     loadComments();
     loadSubtasks();
   }, [task.id]);
+
+  useEffect(() => {
+    if (!task.product_id) {
+      setQaCycles([]);
+      setQaCycleId('');
+      return;
+    }
+    qaCyclesApi.getAll(task.product_id)
+      .then((list) => {
+        setQaCycles(list);
+        const open = list.find((c) => c.status === 'open' || c.status === 'in_review');
+        setQaCycleId((prev) => {
+          if (prev && list.some((c) => c.id === prev)) return prev;
+          return open?.id ?? '';
+        });
+      })
+      .catch(() => setQaCycles([]));
+  }, [task.product_id]);
 
   const loadComments = async () => {
     try { setComments(await listComments(task.id)); } catch {}
@@ -146,7 +168,7 @@ export default function TaskDetailDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative bg-card w-full max-w-[560px] h-full shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+      <div className="relative flex h-full max-h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden bg-card shadow-2xl animate-slide-in-right sm:max-w-[560px]">
 
         {/* ── Header ── */}
         <div className="px-5 py-4 border-b flex items-start justify-between gap-3 bg-card flex-shrink-0">
@@ -181,7 +203,7 @@ export default function TaskDetailDrawer({
         </div>
 
         {/* ── Story Points & Status ── */}
-        <div className="px-5 py-3 border-b flex items-center gap-4 flex-shrink-0 bg-muted/30">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b bg-muted/30 px-5 py-3 sm:gap-4">
           <div className="flex items-center gap-2">
             <Label className="text-[11px] text-muted-foreground font-semibold">Story Points</Label>
             <div className="flex gap-1">
@@ -232,17 +254,18 @@ export default function TaskDetailDrawer({
         )}
 
         {/* ── Tabs ── */}
-        <div className="px-5 border-b flex gap-0 flex-shrink-0">
+        <div className="flex min-w-0 flex-shrink-0 gap-0 overflow-x-auto border-b px-5 scrollbar-thin">
           {[
             { id: 'comments' as const,  label: 'Comments', icon: MessageSquare, count: comments.length },
             { id: 'subtasks' as const,  label: 'Subtasks', icon: ListChecks,    count: subtasks.length },
             { id: 'details' as const,   label: 'Details',  icon: Package,       count: 0 },
+            { id: 'ai' as const,        label: 'AI',       icon: Sparkles,      count: 0 },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors cursor-pointer',
+                'flex flex-shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-medium transition-colors',
                 activeTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -368,6 +391,74 @@ export default function TaskDetailDrawer({
           )}
 
           {/* Details tab */}
+          {activeTab === 'ai' && (
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Run task-scoped analysis (saved as an analyzer report for the selected QA cycle) or refresh the AI priority score using the same rules as sprint bulk scoring.
+              </p>
+              <div>
+                <Label className="text-xs">QA cycle (optional — defaults to latest open cycle)</Label>
+                <select
+                  className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  value={qaCycleId}
+                  onChange={(e) => setQaCycleId(e.target.value)}
+                >
+                  <option value="">Auto-select open cycle</option>
+                  {qaCycles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.product_name} · v{c.version_label} (#{c.cycle_number}) — {c.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={!!aiBusy}
+                  onClick={async () => {
+                    setAiBusy('analyze');
+                    try {
+                      const body = qaCycleId ? { qa_cycle_id: qaCycleId } : undefined;
+                      await taskAiApi.analyzeTask(task.id, body);
+                      toast.success('Task analysis completed');
+                      onRefresh();
+                    } catch (e: any) {
+                      toast.error(e.message || 'Analysis failed');
+                    } finally {
+                      setAiBusy(null);
+                    }
+                  }}
+                >
+                  {aiBusy === 'analyze' ? 'Analyzing…' : 'Run AI analysis'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!!aiBusy}
+                  onClick={async () => {
+                    setAiBusy('score');
+                    try {
+                      await taskAiApi.scoreTaskPriority(task.id);
+                      toast.success('Priority score updated');
+                      onRefresh();
+                    } catch (e: any) {
+                      toast.error(e.message || 'Scoring failed');
+                    } finally {
+                      setAiBusy(null);
+                    }
+                  }}
+                >
+                  {aiBusy === 'score' ? 'Scoring…' : 'Score priority'}
+                </Button>
+              </div>
+              <div className="rounded-md bg-muted/40 p-3 text-xs space-y-1">
+                <div><span className="text-muted-foreground">Current AI score:</span>{' '}
+                  <span className="font-semibold">{Number(task.ai_priority_score ?? 0).toFixed(1)}</span> / 100
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'details' && (
             <div className="p-5 space-y-4">
               {task.description && (
@@ -376,11 +467,12 @@ export default function TaskDetailDrawer({
                   <p className="text-sm text-foreground leading-relaxed">{task.description}</p>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
                   { label: 'Type',            value: task.type },
                   { label: 'Priority',        value: task.priority },
                   { label: 'Story Points',    value: task.story_points || 0 },
+                  { label: 'AI priority',     value: Number(task.ai_priority_score ?? 0).toFixed(1) },
                   { label: 'Assignee',        value: task.assignee_name || dname(task.assigned_to) },
                   { label: 'Product',         value: task.product_name || pname(task.product_id) },
                   { label: 'Created',         value: fmtDateTime(task.created_at) },

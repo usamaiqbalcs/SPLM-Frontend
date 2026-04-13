@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { listVersions, getVersion, saveVersion, listProducts } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { listVersions, getVersion, saveVersion, listProductsForDropdown } from '@/lib/api';
+import { ListPageSearchInput, rowMatchesListSearch, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -37,13 +38,25 @@ export default function VersionControlPanel() {
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
+  const [verSearch, setVerSearch] = useState('');
+  const debouncedVerSearch = useListPageSearchDebounce(verSearch);
 
-  useEffect(() => { listProducts().then(setProducts); }, []);
+  useEffect(() => {
+    listProductsForDropdown().then(setProducts);
+  }, []);
   useEffect(() => {
     if (!selProd) return;
     setLoading(true);
     listVersions(selProd).then(setVersions).finally(() => setLoading(false));
   }, [selProd]);
+
+  const filteredVersions = useMemo(() => {
+    const q = debouncedVerSearch;
+    if (!q) return versions;
+    return versions.filter((v: any) =>
+      rowMatchesListSearch(q, [v.version, v.title, v.git_branch, v.git_commit, v.status, v.version_type, v.release_notes]),
+    );
+  }, [versions, debouncedVerSearch]);
 
   const curVer = versions.find(v => v.is_current) || versions[0];
   const blank = (type = 'minor') => ({
@@ -116,7 +129,10 @@ export default function VersionControlPanel() {
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-lg font-bold text-primary">🏷️ Version Control</h3>
           <div className="flex gap-2 flex-wrap items-center">
-            <select className="border rounded-md px-3 py-2 text-sm w-52 bg-background" value={selProd} onChange={e => setSelProd(e.target.value)}><option value="">Select product…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select className="border rounded-md px-3 py-2 text-sm w-52 bg-background" value={selProd} onChange={e => { setVerSearch(''); setSelProd(e.target.value); }}><option value="">Select product…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            {selProd && (
+              <ListPageSearchInput value={verSearch} onChange={setVerSearch} className="w-36 sm:w-44" aria-label="Search versions" />
+            )}
             {selProd && can('edit') && ['patch', 'minor', 'major', 'hotfix'].map(t => (
               <Button key={t} size="sm" variant="outline" onClick={() => setForm(blank(t))}>+ {t}</Button>
             ))}
@@ -137,10 +153,15 @@ export default function VersionControlPanel() {
             <p className="text-xs mt-1">Create the first version for this product</p>
           </div>
         )}
-        {versions.length > 0 && (
+        {selProd && !loading && versions.length > 0 && filteredVersions.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm">
+            No versions match your search
+          </div>
+        )}
+        {filteredVersions.length > 0 && (
           <div className="relative pl-6">
             <div className="absolute left-2.5 top-0 bottom-0 w-0.5 bg-border" />
-            {versions.map(v => (
+            {filteredVersions.map(v => (
               <div key={v.id} className="relative mb-4 pl-4">
                 <div className={cn('absolute -left-4 top-2 w-3 h-3 rounded-full border-2 border-card', typeColor[v.version_type] || 'bg-primary')} />
                 <div className={cn('rounded-lg p-4 border hover:shadow-sm transition-shadow', v.is_current ? 'bg-primary/5 border-primary/30' : 'bg-muted/30')}>

@@ -12,7 +12,32 @@ import { wikiApi } from '@/lib/apiClient';
 
 // ── Spaces ────────────────────────────────────────────────────────────────────
 
-export const listSpaces = async () => wikiApi.getSpaces();
+export const listSpaces = async (opts?: { page?: number; pageSize?: number; search?: string }) => {
+  const res = await wikiApi.getSpaces(opts);
+  if (res && typeof res === 'object' && Array.isArray((res as any).items)) return (res as any).items;
+  return Array.isArray(res) ? res : [];
+};
+
+export const listSpacesPage = async (opts?: { page?: number; pageSize?: number; search?: string }) => {
+  const res = await wikiApi.getSpaces(opts);
+  if (res && typeof res === 'object' && 'items' in res) {
+    return res as {
+      items: any[];
+      total_count: number;
+      page: number;
+      page_size: number;
+      total_pages: number;
+    };
+  }
+  const items = Array.isArray(res) ? res : [];
+  return {
+    items,
+    total_count: items.length,
+    page: 1,
+    page_size: items.length || 25,
+    total_pages: 1,
+  };
+};
 
 export const saveSpace = async (space: any) => {
   if (space.id) {
@@ -37,6 +62,13 @@ export const listPages = async (spaceId: string) => wikiApi.getPages(spaceId);
 
 export const getPage = async (pageId: string) => wikiApi.getPage(pageId);
 
+function normalizeWikiParentId(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s || s === '00000000-0000-0000-0000-000000000000') return null;
+  return s;
+}
+
 export const savePage = async (page: any) => {
   if (page.id) {
     return wikiApi.updatePage(page.id, {
@@ -46,12 +78,18 @@ export const savePage = async (page: any) => {
       sortOrder: page.sort_order ?? page.sortOrder,
     });
   }
-  return wikiApi.createPage(page.space_id ?? page.spaceId, {
-    title:    page.title,
-    content:  page.content ?? '',
-    parentId: page.parent_id ?? page.parentId ?? null,
-    sortOrder: page.sort_order ?? page.sortOrder ?? 0,
-  });
+  const sortRaw = page.sort_order ?? page.sortOrder ?? 0;
+  const sortOrder = Number.isFinite(Number(sortRaw))
+    ? Math.min(1_000_000, Math.max(0, Math.round(Number(sortRaw))))
+    : 0;
+  const parentId = normalizeWikiParentId(page.parent_id ?? page.parentId);
+  const body: Record<string, unknown> = {
+    title: page.title,
+    content: page.content ?? '',
+    sortOrder,
+  };
+  if (parentId) body.parentId = parentId;
+  return wikiApi.createPage(page.space_id ?? page.spaceId, body);
 };
 
 export const deletePage = async (id: string) => wikiApi.deletePage(id);

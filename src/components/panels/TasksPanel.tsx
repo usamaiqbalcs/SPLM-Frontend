@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { listTasks, saveTask, deleteTask, updateTaskStatus, listProducts, listDevelopers } from '@/lib/api';
+import { listTasksPage, saveTask, deleteTask, listProductsPage, listDevelopersPage, updateTaskStatus } from '@/lib/api';
 import { listSprints } from '@/lib/api-sprints';
+import { DEFAULT_LIST_PAGE_SIZE, ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,9 @@ import { cn } from '@/lib/utils';
 import KanbanBoard from '@/components/panels/KanbanBoard';
 import TaskDetailDrawer from '@/components/panels/TaskDetailDrawer';
 
+/** Board loads one large page so columns are useful; list view stays at DEFAULT_LIST_PAGE_SIZE. */
+const KANBAN_TASK_FETCH_SIZE = 200;
+
 export default function TasksPanel() {
   const { can } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
@@ -25,27 +29,73 @@ export default function TasksPanel() {
   const [saving, setSaving] = useState(false);
   const [fS, setFS] = useState('');
   const [fP, setFP] = useState('');
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskTotalCount, setTaskTotalCount] = useState(0);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => (localStorage.getItem('splm-task-view') as any) || 'list');
   const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [searchQ, setSearchQ] = useState('');
+  const debouncedTaskSearch = useListPageSearchDebounce(searchQ);
 
-  // Returns the fresh tasks array so callers can use it immediately (avoids stale closure)
-  const load = async (): Promise<any[]> => {
+  const loadMeta = async () => {
+    try {
+      const [pRes, dRes, s] = await Promise.all([
+        listProductsPage({ page: 1, pageSize: 100, sortBy: 'updated_at', sortDir: 'desc' }),
+        listDevelopersPage({ page: 1, pageSize: 100, sortBy: 'name', sortDir: 'asc' }),
+        listSprints(),
+      ]);
+      setProducts(pRes.items);
+      setDevelopers(dRes.items);
+      setSprints(s);
+    } catch (e: any) {
+      toast.error('Failed to load references: ' + e.message);
+    }
+  };
+
+  /** Returns the fresh tasks array for the current page/filters (avoids stale closure in drawer). */
+  const loadTasks = async (): Promise<any[]> => {
     setLoading(true);
     try {
-      const [t, p, d, s] = await Promise.all([listTasks(), listProducts(), listDevelopers(), listSprints()]);
-      setTasks(t);
-      setProducts(p);
-      setDevelopers(d);
-      setSprints(s);
-      return t;
+      const isKanban = viewMode === 'kanban';
+      const pageSize = isKanban ? KANBAN_TASK_FETCH_SIZE : DEFAULT_LIST_PAGE_SIZE;
+      const page = isKanban ? 1 : taskPage;
+      const r = await listTasksPage({
+        page,
+        pageSize,
+        status: fS || undefined,
+        product_id: fP || undefined,
+        search: debouncedTaskSearch || undefined,
+      });
+      setTasks(r.items);
+      setTaskTotalCount(r.total_count ?? r.items.length);
+      return r.items;
     } catch (e: any) {
-      toast.error('Failed to load: ' + e.message);
+      toast.error('Failed to load tasks: ' + e.message);
       return [];
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    loadMeta();
+  }, []);
+
+  useEffect(() => {
+    setTaskPage(1);
+  }, [fS, fP, debouncedTaskSearch]);
+
+  const listTotalPages = Math.max(1, Math.ceil(taskTotalCount / DEFAULT_LIST_PAGE_SIZE));
+
+  useEffect(() => {
+    if (viewMode === 'list' && taskTotalCount > 0) {
+      const maxPage = Math.max(1, Math.ceil(taskTotalCount / DEFAULT_LIST_PAGE_SIZE));
+      if (taskPage > maxPage) {
+        setTaskPage(maxPage);
+        return;
+      }
+    }
+    void loadTasks();
+  }, [taskPage, fS, fP, debouncedTaskSearch, viewMode]);
 
   const toggleView = (mode: 'list' | 'kanban') => {
     setViewMode(mode);
@@ -61,17 +111,15 @@ export default function TasksPanel() {
     setSaving(true);
     const toSave = { ...form };
     if (!toSave.sprint_id) toSave.sprint_id = null;
-    try { await saveTask(toSave); toast.success(form.id ? 'Task updated' : 'Task created'); load(); setForm(null); }
+    try { await saveTask(toSave); toast.success(form.id ? 'Task updated' : 'Task created'); await loadTasks(); setForm(null); }
     catch (e: any) { toast.error(e.message); }
     finally { setSaving(false); }
   };
 
   const doStatusChange = async (id: string, status: string) => {
-    try { await updateTaskStatus(id, status); toast.success(`Status updated to ${status.replace(/_/g, ' ')}`); load(); }
+    try { await updateTaskStatus(id, status); toast.success(`Status updated to ${status.replace(/_/g, ' ')}`); await loadTasks(); }
     catch (e: any) { toast.error(e.message); }
   };
-
-  const filtered = tasks.filter(t => (!fS || t.status === fS) && (!fP || t.product_id === fP));
 
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
@@ -116,7 +164,7 @@ export default function TasksPanel() {
           onClose={() => setSelectedTask(null)}
           onRefresh={async () => {
             // load() returns fresh tasks — avoids the stale closure bug
-            const freshTasks = await load();
+            const freshTasks = await loadTasks();
             const updated = freshTasks.find((t: any) => t.id === selectedTask.id);
             if (updated) setSelectedTask(updated);
           }}
@@ -124,7 +172,12 @@ export default function TasksPanel() {
       )}
       <div className="bg-card rounded-lg border p-5">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">✅ Tasks ({filtered.length})</h3>
+          <h3 className="text-lg font-bold text-primary">
+            ✅ Tasks
+            <span className="text-muted-foreground font-normal text-sm ml-2">
+              ({tasks.length} of {taskTotalCount.toLocaleString()})
+            </span>
+          </h3>
           <div className="flex gap-2 flex-wrap items-center">
             {/* View toggle */}
             <div className="flex border rounded-md overflow-hidden">
@@ -139,13 +192,14 @@ export default function TasksPanel() {
                 <LayoutGrid className="w-3.5 h-3.5" /> Board
               </button>
             </div>
+            <ListPageSearchInput value={searchQ} onChange={setSearchQ} className="w-36 sm:w-44" />
             <select className="border rounded-md px-3 py-2 text-sm bg-background" value={fS} onChange={e => setFS(e.target.value)}><option value="">All Statuses</option>{['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => <option key={o}>{o}</option>)}</select>
             <select className="border rounded-md px-3 py-2 text-sm bg-background" value={fP} onChange={e => setFP(e.target.value)}><option value="">All Products</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
             {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Task</Button>}
           </div>
         </div>
         {loading ? <TableSkeleton /> :
-          filtered.length === 0 ? (
+          tasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <span className="text-4xl mb-3">✅</span>
               <p className="font-medium">No tasks found</p>
@@ -153,15 +207,15 @@ export default function TasksPanel() {
             </div>
           ) : viewMode === 'kanban' ? (
             <KanbanBoard
-              tasks={filtered}
+              tasks={tasks}
               products={products}
               developers={developers}
-              onRefresh={load}
+              onRefresh={loadTasks}
               onTaskClick={setSelectedTask}
             />
           ) : (
             <div className="space-y-2">
-              {filtered.map(t => (
+              {tasks.map(t => (
                 <div
                   key={t.id}
                   className="bg-muted/30 border rounded-lg p-4 flex justify-between items-start gap-4 hover:bg-muted/50 transition-colors group cursor-pointer"
@@ -174,6 +228,11 @@ export default function TasksPanel() {
                       <StatusBadge status={t.status || 'backlog'} />
                       {t.story_points > 0 && (
                         <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded">{t.story_points} SP</span>
+                      )}
+                      {Number(t.ai_priority_score) > 0 && (
+                        <span className="bg-primary/15 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded border border-primary/30" title="AI priority score">
+                          AI {Number(t.ai_priority_score).toFixed(0)}
+                        </span>
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -193,6 +252,31 @@ export default function TasksPanel() {
             </div>
           )
         }
+        {!loading && viewMode === 'list' && listTotalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Page {taskPage} of {listTotalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={taskPage <= 1} onClick={() => setTaskPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" disabled={taskPage >= listTotalPages} onClick={() => setTaskPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+        {!loading && viewMode === 'list' && taskTotalCount > DEFAULT_LIST_PAGE_SIZE && (
+          <p className="text-xs text-muted-foreground mt-2">
+            List shows {DEFAULT_LIST_PAGE_SIZE} tasks per page. Use filters to narrow results.
+          </p>
+        )}
+        {!loading && viewMode === 'kanban' && taskTotalCount > tasks.length && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Board loads up to {KANBAN_TASK_FETCH_SIZE} tasks per filter ({tasks.length} shown, {taskTotalCount.toLocaleString()} total). Narrow with search or filters to see specific tasks.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { pdmSignoffApi, qaCyclesApi, PdmAcceptanceSignoffDto, QaCycleDto } from '@/lib/api-aisdlc';
-import { listProducts } from '@/lib/api';
+import { listProductsForDropdown } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Loader2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { DEFAULT_LIST_PAGE_SIZE, ListPaginationBar } from '@/components/listing/listPageSearch';
 
 interface Product { id: string; name: string }
 
@@ -48,13 +49,23 @@ export default function PDMAcceptancePanel() {
     perf_benchmarks_met: false,
     rejection_reason: '',
   });
+  const [recordPage, setRecordPage] = useState(1);
+  const recordTotalPages = Math.max(1, Math.ceil(signoffRecords.length / DEFAULT_LIST_PAGE_SIZE));
+  const pagedSignoffRecords = useMemo(() => {
+    const start = (recordPage - 1) * DEFAULT_LIST_PAGE_SIZE;
+    return signoffRecords.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [signoffRecords, recordPage]);
+
+  useEffect(() => {
+    setRecordPage((p) => Math.min(Math.max(1, p), recordTotalPages));
+  }, [recordTotalPages]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
         const [productsData, cyclesData, recordsData] = await Promise.all([
-          listProducts(),
+          listProductsForDropdown(),
           qaCyclesApi.getAll(),      // ← was list()
           pdmSignoffApi.getAll(),    // ← was list()
         ]);
@@ -185,7 +196,7 @@ export default function PDMAcceptancePanel() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6 gap-6">
+    <div className="flex h-full min-w-0 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
       <Alert className="border-amber-200 bg-amber-50">
         <AlertTriangle className="h-4 w-4 text-amber-600" />
         <AlertDescription className="text-amber-800 font-medium">
@@ -260,7 +271,8 @@ export default function PDMAcceptancePanel() {
       </div>
 
       {/* Records Table */}
-      <div className="border rounded-lg overflow-hidden flex-1 overflow-y-auto">
+      <div className="border rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+        <div className="flex-1 overflow-y-auto min-h-0">
         {signoffRecords.length === 0 ? (
           <div className="flex items-center justify-center h-full p-8 text-muted-foreground">
             <p>No sign-off records yet. Create one to get started.</p>
@@ -278,7 +290,7 @@ export default function PDMAcceptancePanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {signoffRecords.map((record) => (
+              {pagedSignoffRecords.map((record) => (
                 <TableRow key={record.id} className="cursor-pointer hover:bg-muted/50">
                   <TableCell className="font-medium">{getProductName(record.product_id)}</TableCell>
                   <TableCell>{getCycleName(record.qa_cycle_id)}</TableCell>
@@ -307,6 +319,15 @@ export default function PDMAcceptancePanel() {
             </TableBody>
           </Table>
         )}
+        </div>
+        <ListPaginationBar
+          page={recordPage}
+          totalPages={recordTotalPages}
+          totalItems={signoffRecords.length}
+          pageSize={DEFAULT_LIST_PAGE_SIZE}
+          onPageChange={setRecordPage}
+          disabled={submitting}
+        />
       </div>
 
       {/* Review Dialog */}

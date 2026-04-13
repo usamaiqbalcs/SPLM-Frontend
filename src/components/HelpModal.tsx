@@ -52,15 +52,15 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-6 sm:items-center sm:px-4 sm:py-8">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-card rounded-xl shadow-2xl border w-full max-w-[600px] overflow-hidden animate-scale-in">
+      <div className="relative my-auto w-full max-w-[600px] overflow-hidden rounded-xl border bg-card shadow-2xl animate-scale-in max-h-[min(92dvh,calc(100vh-3rem))] flex flex-col">
 
         {/* Header */}
-        <div className="px-6 py-4 border-b flex items-start justify-between">
+        <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b px-4 py-4 sm:px-6">
           <div>
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-extrabold text-sm">
@@ -81,7 +81,7 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
         </div>
 
         {/* Content */}
-        <div className="p-6 max-h-[72vh] overflow-y-auto scrollbar-thin space-y-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 scrollbar-thin sm:p-6">
 
           {/* Keyboard shortcuts */}
           <div>
@@ -90,9 +90,9 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
             </h3>
             <div className="bg-muted/40 rounded-lg divide-y divide-border">
               {SHORTCUTS.map((s, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-2">
-                  <span className="text-sm text-foreground">{s.desc}</span>
-                  <div className="flex gap-1">
+                <div key={i} className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="min-w-0 text-sm text-foreground">{s.desc}</span>
+                  <div className="flex flex-shrink-0 flex-wrap gap-1">
                     {s.keys.map(k => (
                       <kbd
                         key={k}

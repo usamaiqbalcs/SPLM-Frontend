@@ -11,6 +11,8 @@
  * TypeScript caller can pass camelCase objects as normal.
  */
 
+import type { GlobalSearchResponse } from '@/lib/global-search-types';
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
@@ -20,6 +22,30 @@ const TOKEN_KEY = 'zenatech_jwt';
 
 function getToken(): string | null {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+/** Pull human-readable messages from ASP.NET ProblemDetails / FluentValidation `errors` shapes. */
+function flattenApiValidationErrors(raw: unknown): string {
+  if (raw == null) return '';
+  if (typeof raw === 'string') return raw.trim();
+  if (Array.isArray(raw)) {
+    return raw
+      .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+      .filter(Boolean)
+      .join('; ');
+  }
+  if (typeof raw !== 'object') return String(raw);
+  const parts: string[] = [];
+  for (const v of Object.values(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (typeof item === 'string' && item.trim()) parts.push(item.trim());
+      }
+    } else if (typeof v === 'string' && v.trim()) {
+      parts.push(v.trim());
+    }
+  }
+  return parts.join('; ');
 }
 
 function authHeaders(): HeadersInit {
@@ -56,22 +82,16 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({} as Record<string, unknown>));
-    const rawErrors = err?.errors;
-    let fromErrors = '';
-    if (Array.isArray(rawErrors)) {
-      fromErrors = (rawErrors as string[]).filter(Boolean).join(' ');
-    } else if (rawErrors && typeof rawErrors === 'object') {
-      fromErrors = Object.values(rawErrors as Record<string, string[]>)
-        .flat()
-        .filter(Boolean)
-        .join(' ');
-    }
+    const fromErrors = flattenApiValidationErrors(err?.errors);
+    const detail = typeof err?.detail === 'string' ? err.detail.trim() : '';
+    const title = typeof err?.title === 'string' ? err.title.trim() : '';
+    const generic = 'One or more validation errors occurred.';
     const msg =
-      (err?.detail as string | undefined) ||
-      (err?.message as string | undefined) ||
-      (err?.title as string | undefined) ||
-      fromErrors ||
-      `HTTP ${res.status}`;
+      (fromErrors ? fromErrors : '') ||
+      (detail && detail !== generic ? detail : '') ||
+      (typeof err?.message === 'string' && err.message.trim() ? String(err.message).trim() : '') ||
+      (title && title !== generic ? title : '') ||
+      (detail || title || `HTTP ${res.status}`);
     throw new Error(msg);
   }
 
@@ -98,6 +118,7 @@ export interface TaskDto {
   assignee_email?: string;
   assignee_avatar?: string;
   story_points: number;
+  estimated_hours?: number;
   due_date?: string;
   is_overdue: boolean;
   subtask_count: number;
@@ -132,20 +153,45 @@ export interface TaskQueryParams {
   sortDir?: 'asc' | 'desc';
 }
 
+export interface ProductQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+}
+
+export interface DeveloperQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+}
+
+function toQueryString(params: Record<string, unknown>): string {
+  return new URLSearchParams(
+    Object.fromEntries(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => [k, String(v)]),
+    ),
+  ).toString();
+}
+
 // ── Tasks module ──────────────────────────────────────────────────────────────
 
 export const tasksApi = {
-  getAll: async (params: TaskQueryParams = {}): Promise<TaskDto[]> => {
-    const qs = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries(params)
-          .filter(([, v]) => v !== undefined && v !== null)
-          .map(([k, v]) => [k, String(v)]),
-      ),
-    ).toString();
-    const result = await netFetch<PagedResult<TaskDto>>('GET', `/tasks?${qs}`);
-    return result.items;
+  getPage: async (params: TaskQueryParams = {}): Promise<PagedResult<TaskDto>> => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<PagedResult<TaskDto>>('GET', `/tasks?${qs}`);
   },
+
+  /** @deprecated Prefer getPage — returns one page of items only (default 10). */
+  getAll: async (params: TaskQueryParams = {}): Promise<TaskDto[]> =>
+    (await tasksApi.getPage(params)).items,
 
   getById: async (id: string): Promise<TaskDto | null> =>
     netFetch<TaskDto>('GET', `/tasks/${id}`),
@@ -187,7 +233,14 @@ export const tasksApi = {
 // ── Products module ───────────────────────────────────────────────────────────
 
 export const productsApi = {
-  getAll: async () => netFetch<any[]>('GET', '/products'),
+  getPage: async (params: ProductQueryParams = {}) => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<PagedResult<any>>('GET', `/products?${qs}`);
+  },
+
+  /** First page only (up to 100 rows) — for simple dropdowns; use getPage for full lists. */
+  getAll: async () => (await productsApi.getPage({ page: 1, pageSize: 100 })).items,
 
   getById: async (id: string) => netFetch<any>('GET', `/products/${id}`),
 
@@ -201,7 +254,13 @@ export const productsApi = {
 // ── Developers module ─────────────────────────────────────────────────────────
 
 export const developersApi = {
-  getAll: async () => netFetch<any[]>('GET', '/developers'),
+  getPage: async (params: DeveloperQueryParams = {}) => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<PagedResult<any>>('GET', `/developers?${qs}`);
+  },
+
+  getAll: async () => (await developersApi.getPage({ page: 1, pageSize: 100 })).items,
 
   getByEmail: async (email: string) =>
     netFetch<any>('GET', `/developers/by-email?email=${encodeURIComponent(email)}`),
@@ -242,8 +301,23 @@ export const sprintsApi = {
 
 // ── Deployments module ────────────────────────────────────────────────────────
 
+export interface DeploymentQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  productId?: string;
+  environment?: string;
+  status?: string;
+}
+
 export const deploymentsApi = {
-  getAll: async () => netFetch<any[]>('GET', '/deployments'),
+  getPage: async (params: DeploymentQueryParams = {}): Promise<PagedResult<any>> => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<PagedResult<any>>('GET', `/deployments?${qs}`);
+  },
+
+  getAll: async () => (await deploymentsApi.getPage({ page: 1, pageSize: 100 })).items,
 
   create: async (data: any) => netFetch<any>('POST', '/deployments', data),
 
@@ -290,8 +364,40 @@ export const environmentsApi = {
 
 // ── Releases module ───────────────────────────────────────────────────────────
 
+export interface ReleaseQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+}
+
+/** Paged releases + filter-scoped status counts (matches backend ReleasePageDto). */
+export interface ReleasePageDto {
+  items: any[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_previous_page: boolean;
+  has_next_page: boolean;
+  stats: {
+    total: number;
+    planned: number;
+    in_progress: number;
+    staging: number;
+    released: number;
+    cancelled: number;
+  };
+}
+
 export const releasesApi = {
-  getAll: async () => netFetch<any[]>('GET', '/releases'),
+  getPage: async (params: ReleaseQueryParams = {}): Promise<ReleasePageDto> => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<ReleasePageDto>('GET', `/releases?${qs}`);
+  },
+
+  getAll: async () => (await releasesApi.getPage({ page: 1, pageSize: 100 })).items,
 
   create: async (data: any) => netFetch<any>('POST', '/releases', data),
 
@@ -302,8 +408,41 @@ export const releasesApi = {
 
 // ── Feedback module ───────────────────────────────────────────────────────────
 
+export interface FeedbackQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  productId?: string;
+  channel?: string;
+  sentiment?: string;
+}
+
+export interface FeedbackPageDto {
+  items: any[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_previous_page: boolean;
+  has_next_page: boolean;
+  stats: {
+    total: number;
+    positive: number;
+    neutral: number;
+    negative: number;
+    critical: number;
+    avg_urgency: number;
+  };
+}
+
 export const feedbackApi = {
-  getAll: async () => netFetch<any[]>('GET', '/feedback'),
+  getPage: async (params: FeedbackQueryParams = {}): Promise<FeedbackPageDto> => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<FeedbackPageDto>('GET', `/feedback?${qs}`);
+  },
+
+  getAll: async () => (await feedbackApi.getPage({ page: 1, pageSize: 100 })).items,
 
   create: async (data: any) => netFetch<any>('POST', '/feedback', data),
 
@@ -314,8 +453,39 @@ export const feedbackApi = {
 
 // ── Research module ───────────────────────────────────────────────────────────
 
+export interface ResearchQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  urgency?: string;
+  productId?: string;
+}
+
+export interface ResearchPageDto {
+  items: any[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_previous_page: boolean;
+  has_next_page: boolean;
+  stats: {
+    total: number;
+    low: number;
+    medium: number;
+    within30_days: number;
+    immediate: number;
+  };
+}
+
 export const researchApi = {
-  getAll: async () => netFetch<any[]>('GET', '/research'),
+  getPage: async (params: ResearchQueryParams = {}): Promise<ResearchPageDto> => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<ResearchPageDto>('GET', `/research?${qs}`);
+  },
+
+  getAll: async () => (await researchApi.getPage({ page: 1, pageSize: 100 })).items,
 
   create: async (data: any) => netFetch<any>('POST', '/research', data),
 
@@ -324,10 +494,23 @@ export const researchApi = {
   delete: async (id: string) => netFetch<void>('DELETE', `/research/${id}`),
 };
 
+// ── Global search (unified backend) ───────────────────────────────────────────
+
+export const globalSearchApi = {
+  search: async (q: string, limit = 60): Promise<GlobalSearchResponse> => {
+    const qs = toQueryString({ q: q.trim(), limit } as Record<string, unknown>);
+    return netFetch<GlobalSearchResponse>('GET', `/search?${qs}`);
+  },
+};
+
 // ── Wiki module ───────────────────────────────────────────────────────────────
 
 export const wikiApi = {
-  getSpaces: async () => netFetch<any[]>('GET', '/wiki/spaces'),
+  getSpaces: async (params?: { page?: number; pageSize?: number; search?: string }) => {
+    const merged = { page: 1, pageSize: 10, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<any>('GET', `/wiki/spaces?${qs}`);
+  },
 
   createSpace: async (data: any) => netFetch<any>('POST', '/wiki/spaces', data),
 

@@ -42,6 +42,7 @@ const DeploymentsPanel      = lazy(() => import('@/components/panels/Deployments
 const EnvironmentsPanel     = lazy(() => import('@/components/panels/EnvironmentsPanel'));
 const ReleasesPanel         = lazy(() => import('@/components/panels/ReleasesPanel'));
 // AI-SDLC panels
+const AiSdlcOverviewPanel     = lazy(() => import('@/components/panels/AiSdlcOverviewPanel'));
 const WorkflowPipelinePanel  = lazy(() => import('@/components/panels/WorkflowPipelinePanel'));
 const QACyclesPanel          = lazy(() => import('@/components/panels/QACyclesPanel'));
 const AIAnalyzerPanel        = lazy(() => import('@/components/panels/AIAnalyzerPanel'));
@@ -51,6 +52,7 @@ const PDMAcceptancePanel     = lazy(() => import('@/components/panels/PDMAccepta
 const PromptLibraryPanel     = lazy(() => import('@/components/panels/PromptLibraryPanel'));
 const KPIDashboardPanel      = lazy(() => import('@/components/panels/KPIDashboardPanel'));
 const CanaryDeploymentPanel  = lazy(() => import('@/components/panels/CanaryDeploymentPanel'));
+const GlobalSearchPage        = lazy(() => import('@/pages/GlobalSearchPage'));
 
 /** Wraps each lazy panel in a Suspense boundary with a skeleton fallback. */
 const Panel = ({ children }: { children: React.ReactNode }) => (
@@ -89,6 +91,7 @@ const App = () => (
               <Route path="team"         element={<Panel><DevelopersPanel /></Panel>} />
 
               {/* ── AI-SDLC Pipeline routes ────────────────────────────── */}
+              <Route path="ai-overview"    element={<Panel><AiSdlcOverviewPanel /></Panel>} />
               <Route path="workflow"       element={<Panel><WorkflowPipelinePanel /></Panel>} />
               <Route path="qa-cycles"      element={<Panel><QACyclesPanel /></Panel>} />
               <Route path="ai-analyzer"    element={<Panel><AIAnalyzerPanel /></Panel>} />
@@ -98,6 +101,7 @@ const App = () => (
               <Route path="prompts"        element={<Panel><PromptLibraryPanel /></Panel>} />
               <Route path="kpi"            element={<Panel><KPIDashboardPanel /></Panel>} />
               <Route path="canary"         element={<Panel><CanaryDeploymentPanel /></Panel>} />
+              <Route path="search"         element={<Panel><GlobalSearchPage /></Panel>} />
             </Route>
           </Route>
 

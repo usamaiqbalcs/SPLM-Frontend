@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { listReleases, saveRelease, deleteRelease, listProducts } from '@/lib/api';
+import { listReleasesPage, saveRelease, deleteRelease, listProductsForDropdown } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -44,15 +45,51 @@ export default function ReleasesPanel() {
   const [saving, setSaving]     = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [statusF, setStatusF]   = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState({
+    planned: 0, in_progress: 0, staging: 0, released: 0, cancelled: 0, total: 0,
+  });
+  const pageSize = 10;
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useListPageSearchDebounce(search);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listReleases(), listProducts()])
-      .then(([r, p]) => { setItems(r); setProducts(p); })
+    Promise.all([
+      listReleasesPage({
+        page,
+        pageSize,
+        status: statusF || undefined,
+        search: debouncedSearch || undefined,
+      }),
+      listProductsForDropdown(),
+    ])
+      .then(([data, p]) => {
+        setItems(data.items);
+        setProducts(p);
+        setTotalPages(Math.max(1, data.total_pages));
+        setTotalCount(data.total_count);
+        const st = data.stats;
+        setServerStats({
+          planned: st?.planned ?? 0,
+          in_progress: st?.in_progress ?? 0,
+          staging: st?.staging ?? 0,
+          released: st?.released ?? 0,
+          cancelled: st?.cancelled ?? 0,
+          total: st?.total ?? 0,
+        });
+      })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusF]);
+  useEffect(() => {
+    load();
+  }, [page, statusF, debouncedSearch]);
 
   const pname = (id: string) => products.find(p => p.id === id)?.name ?? null;
 
@@ -93,17 +130,13 @@ export default function ReleasesPanel() {
     return lines.length ? { done, total: lines.length, pct: Math.round((done / lines.length) * 100) } : { done: 0, total: 0, pct: 0 };
   };
 
-  // Stats
-  const stats = useMemo(() => {
-    const counts: Record<string, number> = { planned: 0, in_progress: 0, staging: 0, released: 0, cancelled: 0 };
-    items.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-    return counts;
-  }, [items]);
-
-  const filtered = useMemo(() =>
-    items.filter(r => !statusF || r.status === statusF),
-    [items, statusF]
-  );
+  const stats = useMemo(() => ({
+    planned: serverStats.planned,
+    in_progress: serverStats.in_progress,
+    staging: serverStats.staging,
+    released: serverStats.released,
+    cancelled: serverStats.cancelled,
+  }), [serverStats]);
 
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
@@ -129,7 +162,9 @@ export default function ReleasesPanel() {
             value={form.type}
             onChange={e => setForm((f: any) => ({ ...f, type: e.target.value }))}
           >
-            {TYPE_OPTIONS.map(o => <option key={o}>{o.replace(/_/g, ' ')}</option>)}
+            {TYPE_OPTIONS.map(o => (
+              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
+            ))}
           </select>
         </div>
         <div>
@@ -139,7 +174,9 @@ export default function ReleasesPanel() {
             value={form.status}
             onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}
           >
-            {STATUS_FLOW.map(o => <option key={o}>{o.replace(/_/g, ' ')}</option>)}
+            {STATUS_FLOW.map(o => (
+              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
+            ))}
           </select>
         </div>
         <div>
@@ -236,7 +273,11 @@ export default function ReleasesPanel() {
         {STATUS_FLOW.map(status => (
           <button
             key={status}
-            onClick={() => setStatusF(statusF === status ? '' : status)}
+            onClick={() => {
+              const next = statusF === status ? '' : status;
+              setPage(1);
+              setStatusF(next);
+            }}
             className={cn(
               'bg-card rounded-lg border p-3 text-left hover:shadow-sm transition-all cursor-pointer',
               statusF === status && 'ring-2 ring-primary'
@@ -267,11 +308,12 @@ export default function ReleasesPanel() {
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-lg font-bold text-primary flex items-center gap-2">
             <PackageCheck className="w-5 h-5" />
-            Releases ({filtered.length})
+            Releases ({totalCount.toLocaleString()})
           </h3>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap items-center">
+            <ListPageSearchInput value={search} onChange={setSearch} className="w-40 sm:w-48" />
             {statusF && (
-              <Button variant="ghost" size="sm" onClick={() => setStatusF('')}>Clear filter</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setPage(1); setStatusF(''); }}>Clear filter</Button>
             )}
             {can('release') && (
               <Button onClick={() => setForm({ ...blank })}>+ New Release</Button>
@@ -280,7 +322,7 @@ export default function ReleasesPanel() {
         </div>
 
         {loading ? <TableSkeleton /> :
-          filtered.length === 0 ? (
+          items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <PackageCheck className="w-10 h-10 text-muted-foreground/20 mb-3" />
               <p className="font-medium">No releases found</p>
@@ -288,7 +330,7 @@ export default function ReleasesPanel() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map(r => {
+              {items.map(r => {
                 const prog = getProgress(r.checklist);
                 const includedIds: string[] = (r.products_included || '').split(',').map((s: string) => s.trim()).filter(Boolean);
                 const includedNames = includedIds.map(id => pname(id)).filter(Boolean);
@@ -352,6 +394,15 @@ export default function ReleasesPanel() {
             </div>
           )
         }
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

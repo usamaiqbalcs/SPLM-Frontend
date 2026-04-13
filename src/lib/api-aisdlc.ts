@@ -115,6 +115,8 @@ export interface QaIssueDto {
 export interface AnalyzerReportDto {
   id: string;
   qa_cycle_id: string;
+  task_id?: string;
+  task_title?: string;
   product_id: string;
   product_name: string;
   report_reference: string;
@@ -186,10 +188,33 @@ export interface KpiDashboardSummaryDto {
   avg_regression_rate_pct: number;
   avg_developer_override_rate_pct: number;
   total_production_incidents: number;
+  pm_on_time_rate_pct: number;
+  avg_total_issues_per_snapshot: number;
   total_products: number;
   total_qa_cycles: number;
   recent_snapshots: KpiSnapshotDto[];
   product_breakdown: KpiSnapshotDto[];
+}
+
+export interface AiSdlcPhaseCountDto {
+  phase: string;
+  count: number;
+}
+
+export interface AiSdlcKpiTrendPointDto {
+  snapshot_date: string;
+  ai_auto_fix_rate_pct: number;
+}
+
+export interface AiSdlcOverviewDto {
+  tracked_products: number;
+  open_qa_cycles: number;
+  completed_analyzer_reports: number;
+  pending_qa_issue_reviews: number;
+  phase_distribution: AiSdlcPhaseCountDto[];
+  kpi_trend: AiSdlcKpiTrendPointDto[];
+  recent_qa_cycles: QaCycleDto[];
+  recent_analyzer_reports: AnalyzerReportDto[];
 }
 
 // ── Route base — AiSdlcController is registered at api/v1/ai-sdlc/... ─────────
@@ -234,6 +259,8 @@ export const qaCyclesApi = {
 
 export const qaIssuesApi = {
   getByCycle: (cycleId: string) => netFetch<QaIssueDto[]>('GET', `${B}/qa-cycles/${cycleId}/issues`),
+  /** All issues with fix_applied — single request for Fix Review (avoids N calls per QA cycle). */
+  getForFixReview: () => netFetch<QaIssueDto[]>('GET', `${B}/qa-issues/for-fix-review`),
   getById: (id: string) => netFetch<QaIssueDto>('GET', `${B}/qa-issues/${id}`),
   create: (data: any) => netFetch<QaIssueDto>('POST', `${B}/qa-issues`, data),
   review: (id: string, data: { review_status: string; rejection_reason_code?: string; rejection_notes?: string }) =>
@@ -243,10 +270,31 @@ export const qaIssuesApi = {
 // ── Analyzer Reports ───────────────────────────────────────────────────────────
 
 export const analyzerReportsApi = {
-  getAll: (qaCycleId?: string) => netFetch<AnalyzerReportDto[]>('GET', `${B}/analyzer-reports${qaCycleId ? `?qaCycleId=${qaCycleId}` : ''}`),
+  getAll: (qaCycleId?: string, productId?: string) => {
+    const q = new URLSearchParams();
+    if (qaCycleId) q.set('qaCycleId', qaCycleId);
+    if (productId) q.set('productId', productId);
+    const qs = q.toString();
+    return netFetch<AnalyzerReportDto[]>('GET', `${B}/analyzer-reports${qs ? `?${qs}` : ''}`);
+  },
   getById: (id: string) => netFetch<AnalyzerReportDto>('GET', `${B}/analyzer-reports/${id}`),
   trigger: (data: { qa_cycle_id: string; product_id: string }) =>
     netFetch<AnalyzerReportDto>('POST', `${B}/analyzer-reports/trigger`, data),
+};
+
+export const aiSdlcOverviewApi = {
+  get: (productId?: string) =>
+    netFetch<AiSdlcOverviewDto>('GET', `${B}/overview${productId ? `?productId=${productId}` : ''}`),
+};
+
+/** Task-scoped AI analysis & priority scoring (same persistence as QA analyzer reports). */
+export const taskAiApi = {
+  analyzeTask: (taskId: string, body?: { qa_cycle_id?: string }) =>
+    netFetch<AnalyzerReportDto>('POST', `${B}/tasks/${taskId}/analyze`, body ?? {}),
+  scoreTaskPriority: (taskId: string) =>
+    netFetch<{ id: string; ai_priority_score: number }>('POST', `${B}/tasks/${taskId}/score-priority`, {}),
+  scoreSprintPriorities: (sprintId: string) =>
+    netFetch<number>('POST', `${B}/sprints/${sprintId}/score-task-priorities`, {}),
 };
 
 // ── PDM Acceptance Sign-Off ────────────────────────────────────────────────────

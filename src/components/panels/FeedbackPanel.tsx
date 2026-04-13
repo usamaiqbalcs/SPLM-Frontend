@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { listFeedback, saveFeedback, deleteFeedback, listProducts } from '@/lib/api';
+import { listFeedbackPage, saveFeedback, deleteFeedback, listProductsForDropdown } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -29,21 +30,57 @@ export default function FeedbackPanel() {
   const [form, setForm]       = useState<any>(null);
   const [saving, setSaving]   = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState({
+    total: 0, positive: 0, neutral: 0, negative: 0, critical: 0, avg_urgency: 0,
+  });
+  const pageSize = 10;
 
   // Filters
   const [chF, setChF]     = useState('');
   const [pF, setPF]       = useState('');
   const [sentF, setSentF] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useListPageSearchDebounce(search);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, chF, pF, sentF]);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listFeedback(), listProducts()])
-      .then(([f, p]) => { setItems(f); setProducts(p); })
+    Promise.all([
+      listFeedbackPage({
+        page,
+        pageSize,
+        search: debouncedSearch || undefined,
+        product_id: pF || undefined,
+        channel: chF || undefined,
+        sentiment: sentF || undefined,
+      }),
+      listProductsForDropdown(),
+    ])
+      .then(([fb, p]) => {
+        setItems(fb.items);
+        setProducts(p);
+        setTotalPages(Math.max(1, fb.total_pages));
+        setTotalCount(fb.total_count);
+        const st = fb.stats as typeof serverStats;
+        setServerStats({
+          total: st?.total ?? 0,
+          positive: st?.positive ?? 0,
+          neutral: st?.neutral ?? 0,
+          negative: st?.negative ?? 0,
+          critical: st?.critical ?? 0,
+          avg_urgency: Number(st?.avg_urgency ?? 0),
+        });
+      })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, debouncedSearch, chF, pF, sentF]);
 
   const blank = { product_id: '', channel: 'manual', raw_content: '', sentiment: 'neutral', urgency_score: 5 };
   const pname = (id: string) => products.find(p => p.id === id)?.name || '—';
@@ -67,24 +104,14 @@ export default function FeedbackPanel() {
     finally { setDeleteId(null); }
   };
 
-  // Stats
-  const stats = useMemo(() => {
-    const counts: Record<string, number> = { positive: 0, neutral: 0, negative: 0, critical: 0 };
-    items.forEach(f => { if (counts[f.sentiment] !== undefined) counts[f.sentiment]++; });
-    const avgUrgency = items.length ? (items.reduce((s, f) => s + (f.urgency_score || 0), 0) / items.length).toFixed(1) : '0';
-    return { ...counts, total: items.length, avgUrgency };
-  }, [items]);
-
-  // Filtered list
-  const filtered = useMemo(() => items.filter(f => {
-    const q = search.toLowerCase();
-    return (
-      (!chF || f.channel === chF) &&
-      (!pF || f.product_id === pF) &&
-      (!sentF || f.sentiment === sentF) &&
-      (!q || (f.raw_content || '').toLowerCase().includes(q))
-    );
-  }), [items, chF, pF, sentF, search]);
+  const stats = useMemo(() => ({
+    positive: serverStats.positive,
+    neutral: serverStats.neutral,
+    negative: serverStats.negative,
+    critical: serverStats.critical,
+    total: serverStats.total,
+    avgUrgency: serverStats.total ? serverStats.avg_urgency.toFixed(1) : '0',
+  }), [serverStats]);
 
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
@@ -221,11 +248,12 @@ export default function FeedbackPanel() {
       <div className="bg-card rounded-lg border p-4">
         <div className="flex flex-wrap gap-2 items-center justify-between">
           <div className="flex flex-wrap gap-2">
-            <Input
+            <ListPageSearchInput
               className="w-44 h-9 text-sm"
               placeholder="Search content…"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={setSearch}
+              aria-label="Search feedback"
             />
             <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={pF} onChange={e => setPF(e.target.value)}>
               <option value="">All Products</option>
@@ -253,7 +281,7 @@ export default function FeedbackPanel() {
         {/* ── List ── */}
         <div className="mt-4">
           {loading ? <TableSkeleton /> :
-            filtered.length === 0 ? (
+            items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <MessageSquare className="w-10 h-10 text-muted-foreground/20 mb-3" />
                 <p className="font-medium">No feedback found</p>
@@ -261,7 +289,7 @@ export default function FeedbackPanel() {
               </div>
             ) : (
               <div className="space-y-2">
-                {filtered.map(f => {
+                {items.map(f => {
                   const sc = SENTIMENT_CONFIG[f.sentiment] ?? SENTIMENT_CONFIG.neutral;
                   return (
                     <div
@@ -307,6 +335,22 @@ export default function FeedbackPanel() {
             )
           }
         </div>
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Page {page} of {totalPages}
+              {totalCount > 0 && <span className="ml-2">({items.length} of {totalCount.toLocaleString()} shown)</span>}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

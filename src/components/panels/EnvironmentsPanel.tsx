@@ -3,11 +3,16 @@ import {
   listEnvironments,
   saveEnvironment,
   deleteEnvironment,
-  listProducts,
+  listProductsForDropdown,
   getEnvironment,
   normalizeEnvironmentForForm,
   normalizeGuidString,
 } from '@/lib/api';
+import {
+  ListPageSearchInput,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -56,19 +61,24 @@ function blankForm() {
   };
 }
 
+const ENV_PAGE_SIZE = 10;
+
 export default function EnvironmentsPanel() {
   const { can } = useAuth();
   const [envs, setEnvs] = useState<any[]>([]);
+  const [envPage, setEnvPage] = useState(1);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
+  const [listSearch, setListSearch] = useState('');
+  const debouncedListSearch = useListPageSearchDebounce(listSearch);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listEnvironments(), listProducts()])
+    Promise.all([listEnvironments(), listProductsForDropdown()])
       .then(([e, p]) => {
         setEnvs(e);
         setProducts(p);
@@ -89,6 +99,38 @@ export default function EnvironmentsPanel() {
         .filter(p => p.id.length > 0),
     [products],
   );
+
+  const filteredEnvs = useMemo(() => {
+    const q = debouncedListSearch;
+    if (!q) return envs;
+    const resolveName = (id: string) =>
+      productOptions.find(p => p.id === normalizeGuidString(String(id).trim()))?.name ?? '';
+    return envs.filter((e: any) =>
+      rowMatchesListSearch(q, [
+        e.product_name,
+        e.environment,
+        e.server_host,
+        e.server_url,
+        e.deploy_method,
+        e.git_branch,
+        resolveName(String(e.product_id ?? (e as any).productId ?? '')),
+      ]),
+    );
+  }, [envs, debouncedListSearch, productOptions]);
+
+  const envTotalPages = Math.max(1, Math.ceil(filteredEnvs.length / ENV_PAGE_SIZE));
+  const pagedEnvs = useMemo(() => {
+    const start = (envPage - 1) * ENV_PAGE_SIZE;
+    return filteredEnvs.slice(start, start + ENV_PAGE_SIZE);
+  }, [filteredEnvs, envPage]);
+
+  useEffect(() => {
+    setEnvPage((p) => Math.min(Math.max(1, p), envTotalPages));
+  }, [envTotalPages]);
+
+  useEffect(() => {
+    setEnvPage(1);
+  }, [debouncedListSearch]);
 
   const selectedProductId = form
     ? normalizeGuidString(String(form.product_id ?? '').trim())
@@ -179,6 +221,13 @@ export default function EnvironmentsPanel() {
     } finally {
       setEditLoadingId(null);
     }
+  };
+
+  const openNewConfigure = () => {
+    listProductsForDropdown()
+      .then(setProducts)
+      .catch(() => {})
+      .finally(() => setForm({ ...blankForm() }));
   };
 
   const doDelete = async (row: any) => {
@@ -413,11 +462,42 @@ export default function EnvironmentsPanel() {
   return (
     <div className="animate-fade-in">
       <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-5">
-          <h3 className="text-lg font-bold text-primary">🌐 Environment Registry ({envs.length})</h3>
-          {can('config') && (
-            <Button onClick={() => setForm({ ...blankForm() })}>+ Configure Environment</Button>
-          )}
+        <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
+          <h3 className="text-lg font-bold text-primary">
+            🌐 Environment Registry (
+            {debouncedListSearch ? `${filteredEnvs.length} / ${envs.length}` : envs.length})
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-40 sm:w-48" />
+            {envTotalPages > 1 && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={envPage <= 1}
+                  onClick={() => setEnvPage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <span className="tabular-nums px-1">
+                  {envPage}/{envTotalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={envPage >= envTotalPages}
+                  onClick={() => setEnvPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+            {can('config') && (
+              <Button onClick={openNewConfigure}>+ Configure Environment</Button>
+            )}
+          </div>
         </div>
         {loading ? (
           <GridCardSkeleton count={3} />
@@ -427,9 +507,15 @@ export default function EnvironmentsPanel() {
             <p className="font-medium">No environments configured</p>
             <p className="text-xs mt-1">Set up dev, staging, and production environments</p>
           </div>
+        ) : filteredEnvs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <span className="text-4xl mb-3">🔎</span>
+            <p className="font-medium">No environments match your search</p>
+            <p className="text-xs mt-1">Try a different term or clear the search box</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {envs.map(e => {
+            {pagedEnvs.map(e => {
               const ec = ENV_CONFIG[e.environment as keyof typeof ENV_CONFIG];
               return (
                 <div

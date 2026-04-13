@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { tasksApi, productsApi, developersApi } from '@/lib/apiClient';
+import { ListPageSearchInput, rowMatchesListSearch, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { fmtDate } from '@/lib/splm-utils';
@@ -185,6 +186,8 @@ export default function MyQueuePanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [debugInfo, setDebugInfo] = useState<Record<string, any> | null>(null);
+  const [listSearch, setListSearch] = useState('');
+  const debouncedListSearch = useListPageSearchDebounce(listSearch);
 
   const load = async (quiet = false) => {
     const email = profile?.email?.trim() || user?.email?.trim() || '';
@@ -240,9 +243,24 @@ export default function MyQueuePanel() {
 
   const productName = (id: string) => products.find(p => p.id === id)?.name ?? '—';
 
+  const filteredTasks = useMemo(() => {
+    const q = debouncedListSearch;
+    if (!q.trim()) return tasks;
+    return tasks.filter(t =>
+      rowMatchesListSearch(q, [
+        t.title,
+        t.description,
+        productName(t.product_id),
+        t.status,
+        t.type,
+        t.priority,
+      ]),
+    );
+  }, [tasks, debouncedListSearch, products]);
+
   // ── Derived groups ──────────────────────────────────────────────────────────
   const { overdue, inProgress, dueToday, upcoming, backlog, done } = useMemo(() => {
-    const active = tasks.filter(t => !['done', 'cancelled'].includes(t.status));
+    const active = filteredTasks.filter(t => !['done', 'cancelled'].includes(t.status));
     return {
       overdue:    active.filter(t => t.is_overdue).sort(sortByPriority),
       inProgress: active.filter(t => t.status === 'in_progress').sort(sortByPriority),
@@ -255,25 +273,25 @@ export default function MyQueuePanel() {
         return d > TODAY && t.status !== 'in_progress';
       }).sort(sortByPriority),
       backlog:    active.filter(t => !t.due_date && ['backlog', 'assigned'].includes(t.status)).sort(sortByPriority),
-      done:       tasks.filter(t => t.status === 'done').slice(0, 10),
+      done:       filteredTasks.filter(t => t.status === 'done').slice(0, 10),
     };
-  }, [tasks]);
+  }, [filteredTasks]);
 
   const stats = useMemo(() => {
-    const active = tasks.filter(t => !['done', 'cancelled'].includes(t.status));
-    const totalSP = tasks.reduce((s, t) => s + (t.story_points || 0), 0);
+    const active = filteredTasks.filter(t => !['done', 'cancelled'].includes(t.status));
+    const totalSP = filteredTasks.reduce((s, t) => s + (t.story_points || 0), 0);
     const doneSP  = done.reduce((s, t) => s + (t.story_points || 0), 0);
     return {
-      total:      tasks.length,
+      total:      filteredTasks.length,
       active:     active.length,
       overdue:    overdue.length,
       inProgress: inProgress.length,
       doneCount:  done.length,
-      completion: tasks.length ? Math.round((done.length / tasks.length) * 100) : 0,
+      completion: filteredTasks.length ? Math.round((done.length / filteredTasks.length) * 100) : 0,
       totalSP,
       doneSP,
     };
-  }, [tasks, overdue, inProgress, done]);
+  }, [filteredTasks, overdue, inProgress, done]);
 
   const sections: Section[] = [
     { id: 'overdue',     label: 'Overdue',       icon: <AlertTriangle className="w-4 h-4" />, color: 'text-destructive',      tasks: overdue,    defaultOpen: true },
@@ -366,8 +384,8 @@ export default function MyQueuePanel() {
       )}
 
       {/* Greeting banner */}
-      <div className="bg-card rounded-lg border p-5 flex items-center justify-between gap-4">
-        <div>
+      <div className="bg-card rounded-lg border p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-1 min-w-0">
           <h2 className="text-lg font-bold text-foreground">
             {greeting}, {profile?.name?.split(' ')[0]}! 👋
           </h2>
@@ -392,8 +410,15 @@ export default function MyQueuePanel() {
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-2 flex-shrink-0">
-          <div className="text-right">
+        <div className="flex flex-col sm:items-end gap-2 flex-shrink-0 w-full sm:w-auto">
+          <ListPageSearchInput
+            value={listSearch}
+            onChange={setListSearch}
+            className="w-full sm:w-56"
+            placeholder="Search your tasks…"
+            aria-label="Search tasks in my queue"
+          />
+          <div className="text-right w-full sm:w-auto">
             <div className="text-xs font-semibold text-foreground">{developer.name}</div>
             <div className="text-[11px] text-muted-foreground capitalize">{developer.role}</div>
           </div>
@@ -437,6 +462,13 @@ export default function MyQueuePanel() {
           onTaskClick={setSelectedTask}
         />
       ))}
+
+      {tasks.length > 0 && filteredTasks.length === 0 && debouncedListSearch.trim() !== '' && (
+        <div className="bg-card rounded-lg border p-10 text-center text-muted-foreground">
+          <p className="font-medium text-foreground">No tasks match your search</p>
+          <p className="text-sm mt-1">Try another term or clear the search box.</p>
+        </div>
+      )}
 
       {tasks.length === 0 && (
         <div className="bg-card rounded-lg border p-10 text-center">

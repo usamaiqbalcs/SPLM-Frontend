@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { listResearch, saveResearch, deleteResearch, listProducts } from '@/lib/api';
+import { listResearchPage, saveResearch, deleteResearch, listProductsForDropdown } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -30,20 +31,54 @@ export default function ResearchPanel() {
   const [saving, setSaving]     = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState({
+    total: 0, low: 0, medium: 0, within_30_days: 0, immediate: 0,
+  });
+  const pageSize = 10;
 
   // Filters
   const [urgF, setUrgF]     = useState('');
   const [pF, setPF]         = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useListPageSearchDebounce(search);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, urgF, pF]);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listResearch(), listProducts()])
-      .then(([r, p]) => { setItems(r); setProducts(p); })
+    Promise.all([
+      listResearchPage({
+        page,
+        pageSize,
+        search: debouncedSearch || undefined,
+        urgency: urgF || undefined,
+        product_id: pF || undefined,
+      }),
+      listProductsForDropdown(),
+    ])
+      .then(([data, p]) => {
+        setItems(data.items);
+        setProducts(p);
+        setTotalPages(Math.max(1, data.total_pages));
+        setTotalCount(data.total_count);
+        const st = data.stats as typeof serverStats;
+        setServerStats({
+          total: st?.total ?? 0,
+          low: st?.low ?? 0,
+          medium: st?.medium ?? 0,
+          within_30_days: st?.within_30_days ?? 0,
+          immediate: st?.immediate ?? 0,
+        });
+      })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, debouncedSearch, urgF, pF]);
 
   const blank = { topic: '', source_url: '', urgency: 'low', affected_products: '', ai_analysis: '' };
   const pname = (id: string) => products.find(p => p.id === id)?.name || null;
@@ -67,23 +102,13 @@ export default function ResearchPanel() {
     finally { setDeleteId(null); }
   };
 
-  // Stats
-  const stats = useMemo(() => {
-    const counts: Record<string, number> = { low: 0, medium: 0, within_30_days: 0, immediate: 0 };
-    items.forEach(r => { if (counts[r.urgency] !== undefined) counts[r.urgency]++; });
-    return { ...counts, total: items.length };
-  }, [items]);
-
-  // Filtered list
-  const filtered = useMemo(() => items.filter(r => {
-    const q = search.toLowerCase();
-    const affectedProductIds = (r.affected_products || '').split(',').map((s: string) => s.trim());
-    return (
-      (!urgF || r.urgency === urgF) &&
-      (!pF || affectedProductIds.includes(pF)) &&
-      (!q || (r.topic || '').toLowerCase().includes(q) || (r.ai_analysis || '').toLowerCase().includes(q))
-    );
-  }), [items, urgF, pF, search]);
+  const stats = useMemo(() => ({
+    low: serverStats.low,
+    medium: serverStats.medium,
+    within_30_days: serverStats.within_30_days,
+    immediate: serverStats.immediate,
+    total: serverStats.total,
+  }), [serverStats]);
 
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
@@ -212,11 +237,12 @@ export default function ResearchPanel() {
       <div className="bg-card rounded-lg border p-4">
         <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
           <div className="flex flex-wrap gap-2">
-            <Input
+            <ListPageSearchInput
               className="w-48 h-9 text-sm"
               placeholder="Search topics…"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={setSearch}
+              aria-label="Search research"
             />
             <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={pF} onChange={e => setPF(e.target.value)}>
               <option value="">All Products</option>
@@ -226,7 +252,7 @@ export default function ResearchPanel() {
               <option value="">All Urgencies</option>
               {URGENCY_LEVELS.map(o => <option key={o} value={o}>{URGENCY_CONFIG[o].label}</option>)}
             </select>
-            {(urgF || pF || search) && (
+            {(urgF || pF || debouncedSearch) && (
               <Button variant="ghost" size="sm" onClick={() => { setUrgF(''); setPF(''); setSearch(''); }}>
                 Clear
               </Button>
@@ -238,7 +264,7 @@ export default function ResearchPanel() {
         </div>
 
         {loading ? <TableSkeleton /> :
-          filtered.length === 0 ? (
+          items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <FlaskConical className="w-10 h-10 text-muted-foreground/20 mb-3" />
               <p className="font-medium">No research found</p>
@@ -246,7 +272,7 @@ export default function ResearchPanel() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map(r => {
+              {items.map(r => {
                 const cfg = URGENCY_CONFIG[r.urgency] ?? URGENCY_CONFIG.low;
                 const affectedIds: string[] = (r.affected_products || '').split(',').map((s: string) => s.trim()).filter(Boolean);
                 const affectedNames = affectedIds.map(id => pname(id)).filter(Boolean);
@@ -310,6 +336,18 @@ export default function ResearchPanel() {
             </div>
           )
         }
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Page {page} of {totalPages}
+              {totalCount > 0 && <span className="ml-2">({items.length} of {totalCount.toLocaleString()} shown)</span>}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  listSpaces, saveSpace, deleteSpace,
+  listSpacesPage, saveSpace, deleteSpace,
   listPages, savePage, deletePage, getPage,
   listPageVersions, createPageVersion,
   listPageComments, addPageComment, deletePageComment,
@@ -8,6 +9,7 @@ import {
 } from '@/lib/api-wiki';
 import { WIKI_TEMPLATES } from '@/lib/wiki-templates';
 import { useAuth } from '@/contexts/AuthContext';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,8 +27,15 @@ import {
 type ViewMode = 'browse' | 'edit' | 'view' | 'history' | 'templates';
 
 export default function WikiPanel() {
+  const [searchParams] = useSearchParams();
+  const wikiLinkHandledKey = useRef<string | null>(null);
   const { user, can, profile } = useAuth();
   const [spaces, setSpaces] = useState<any[]>([]);
+  const [spacePage, setSpacePage] = useState(1);
+  const [spaceTotalPages, setSpaceTotalPages] = useState(1);
+  const [spaceTotalCount, setSpaceTotalCount] = useState(0);
+  const [spaceSearch, setSpaceSearch] = useState('');
+  const debouncedSpaceSearch = useListPageSearchDebounce(spaceSearch);
   const [pages, setPages] = useState<any[]>([]);
   const [selectedSpace, setSelectedSpace] = useState<any>(null);
   const [selectedPage, setSelectedPage] = useState<any>(null);
@@ -57,13 +66,34 @@ export default function WikiPanel() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load
   useEffect(() => {
+    setSpacePage(1);
+  }, [debouncedSpaceSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    listSpaces()
-      .then(s => setSpaces(s))
-      .finally(() => setLoading(false));
-  }, []);
+    listSpacesPage({
+      page: spacePage,
+      pageSize: 10,
+      search: debouncedSpaceSearch || undefined,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setSpaces(res.items);
+        setSpaceTotalPages(Math.max(1, res.total_pages));
+        setSpaceTotalCount(res.total_count);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to load wiki spaces');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spacePage, debouncedSpaceSearch]);
 
   useEffect(() => {
     if (!selectedSpace) { setPages([]); return; }
@@ -94,8 +124,13 @@ export default function WikiPanel() {
     try {
       await saveSpace({ ...spaceForm, created_by: spaceForm.created_by || user?.id });
       toast.success(spaceForm.id ? 'Space updated' : 'Space created');
-      const updated = await listSpaces();
-      setSpaces(updated);
+      if (!spaceForm.id) setSpacePage(1);
+      else {
+        const res = await listSpacesPage({ page: spacePage, pageSize: 10 });
+        setSpaces(res.items);
+        setSpaceTotalPages(Math.max(1, res.total_pages));
+        setSpaceTotalCount(res.total_count);
+      }
       setSpaceForm(null);
     } catch (e: any) { toast.error(e.message); }
   };
@@ -109,6 +144,58 @@ export default function WikiPanel() {
     setVersions([]);
     setSelectedVersion(null);
   };
+
+  useEffect(() => {
+    const spaceId = searchParams.get('spaceId');
+    const pageId = searchParams.get('pageId');
+    if (!spaceId || !pageId) {
+      wikiLinkHandledKey.current = null;
+      return;
+    }
+    const key = `${spaceId}:${pageId}`;
+    if (wikiLinkHandledKey.current === key) return;
+
+    let cancelled = false;
+    (async () => {
+      const fail = (msg: string) => {
+        if (cancelled) return;
+        wikiLinkHandledKey.current = key;
+        toast.error(msg);
+      };
+      try {
+        let sp = spaces.find((s: any) => String(s.id) === String(spaceId));
+        if (!sp) {
+          const res = await listSpacesPage({ page: 1, pageSize: 200 });
+          if (cancelled) return;
+          sp = res.items.find((s: any) => String(s.id) === String(spaceId));
+        }
+        if (!sp) {
+          fail('Wiki space not found');
+          return;
+        }
+        if (cancelled) return;
+        setSelectedSpace(sp);
+        const pg = await getPage(pageId);
+        if (cancelled) return;
+        if (!pg) {
+          fail('Wiki page not found');
+          return;
+        }
+        wikiLinkHandledKey.current = key;
+        setSelectedPage(pg);
+        setPageTitle(pg.title);
+        setPageContent(pg.content || '');
+        setViewMode('view');
+        setVersions([]);
+        setSelectedVersion(null);
+      } catch {
+        fail('Could not open wiki page from link');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, spaces]);
 
   const startNewPage = (parentPageId: string | null = null) => {
     setSelectedPage(null);
@@ -191,8 +278,15 @@ export default function WikiPanel() {
         await deleteSpace(deleteTarget.id);
         toast.success('Space deleted');
         if (selectedSpace?.id === deleteTarget.id) { setSelectedSpace(null); setSelectedPage(null); }
-        const updated = await listSpaces();
-        setSpaces(updated);
+        {
+          const res = await listSpacesPage({ page: spacePage, pageSize: 10 });
+          if (res.items.length === 0 && spacePage > 1) setSpacePage((p) => Math.max(1, p - 1));
+          else {
+            setSpaces(res.items);
+            setSpaceTotalPages(Math.max(1, res.total_pages));
+            setSpaceTotalCount(res.total_count);
+          }
+        }
       }
     } catch (e: any) { toast.error(e.message); }
     finally { setDeleteTarget(null); }
@@ -328,7 +422,7 @@ export default function WikiPanel() {
   if (loading) return <TableSkeleton />;
 
   return (
-    <div className="animate-fade-in">
+    <div className="min-w-0 animate-fade-in">
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
@@ -355,9 +449,9 @@ export default function WikiPanel() {
         </div>
       )}
 
-      <div className="flex gap-5 min-h-[600px]">
+      <div className="flex min-h-[min(520px,70dvh)] flex-col gap-4 lg:min-h-[600px] lg:flex-row lg:gap-5">
         {/* Left sidebar — Spaces & Page Tree */}
-        <div className="w-[240px] flex-shrink-0 bg-card rounded-lg border overflow-hidden flex flex-col">
+        <div className="flex w-full min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border bg-card lg:w-[240px]">
           <div className="px-3 py-2.5 border-b flex items-center justify-between">
             <span className="text-xs font-bold text-foreground">Spaces</span>
             <div className="flex gap-1">
@@ -370,6 +464,16 @@ export default function WikiPanel() {
                 <BookTemplate className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
+
+          <div className="px-2 py-1.5 border-b">
+            <ListPageSearchInput
+              value={spaceSearch}
+              onChange={setSpaceSearch}
+              className="w-full h-8 text-xs"
+              placeholder="Search spaces…"
+              aria-label="Search wiki spaces"
+            />
           </div>
 
           {/* Space list */}
@@ -397,6 +501,30 @@ export default function WikiPanel() {
             ))}
           </div>
 
+          {spaceTotalPages > 1 && (
+            <div className="flex items-center justify-between gap-1 px-2 py-1.5 border-b bg-muted/30">
+              <button
+                type="button"
+                disabled={loading || spacePage <= 1}
+                onClick={() => setSpacePage((p) => Math.max(1, p - 1))}
+                className="text-[10px] px-1.5 py-0.5 rounded border bg-background disabled:opacity-40"
+              >
+                Prev
+              </button>
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {spacePage}/{spaceTotalPages} ({spaceTotalCount})
+              </span>
+              <button
+                type="button"
+                disabled={loading || spacePage >= spaceTotalPages}
+                onClick={() => setSpacePage((p) => p + 1)}
+                className="text-[10px] px-1.5 py-0.5 rounded border bg-background disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          )}
+
           {/* Page tree */}
           {selectedSpace && (
             <div className="flex-1 overflow-y-auto scrollbar-thin px-1 py-1.5">
@@ -416,7 +544,7 @@ export default function WikiPanel() {
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 bg-card rounded-lg border overflow-hidden flex flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
           {/* Templates browser */}
           {viewMode === 'templates' && (
             <div className="p-6">
@@ -483,8 +611,8 @@ export default function WikiPanel() {
           {viewMode === 'view' && selectedPage && (
             <div className="flex flex-col h-full">
               {/* Page header */}
-              <div className="px-6 py-4 border-b flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                   <button onClick={() => { setSelectedPage(null); setViewMode('browse'); }} className="p-1 rounded hover:bg-muted cursor-pointer"><ArrowLeft className="w-4 h-4" /></button>
                   <h1 className="text-lg font-bold text-foreground truncate">{selectedPage.title}</h1>
                 </div>
@@ -500,7 +628,7 @@ export default function WikiPanel() {
               </div>
 
               {/* Page meta */}
-              <div className="px-6 py-2 border-b bg-muted/30 flex items-center gap-4 text-[11px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground sm:px-6">
                 <span>Created by {getProfileName(selectedPage.created_by)}</span>
                 <span>Last edited {fmtDateTime(selectedPage.updated_at)}</span>
                 {selectedPage.last_edited_by && <span>by {getProfileName(selectedPage.last_edited_by)}</span>}
@@ -549,22 +677,22 @@ export default function WikiPanel() {
           {/* Edit mode */}
           {viewMode === 'edit' && (
             <div className="flex flex-col h-full">
-              <div className="px-6 py-3 border-b flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex min-w-0 items-center gap-2">
                   <button onClick={() => { selectedPage ? setViewMode('view') : setViewMode('browse'); }} className="p-1 rounded hover:bg-muted cursor-pointer"><X className="w-4 h-4" /></button>
-                  <span className="text-sm font-bold text-foreground">{selectedPage ? 'Edit Page' : 'New Page'}</span>
+                  <span className="truncate text-sm font-bold text-foreground">{selectedPage ? 'Edit Page' : 'New Page'}</span>
                 </div>
-                <div className="flex gap-2 items-center">
-                  <Input placeholder="Change summary..." value={changeSummary} onChange={e => setChangeSummary(e.target.value)} className="w-52 text-xs h-8" />
-                  <Button size="sm" onClick={doSavePage} disabled={saving}>{saving ? 'Saving…' : '💾 Save'}</Button>
+                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <Input placeholder="Change summary..." value={changeSummary} onChange={e => setChangeSummary(e.target.value)} className="h-8 w-full min-w-0 text-xs sm:max-w-xs" />
+                  <Button size="sm" className="w-full shrink-0 sm:w-auto" onClick={doSavePage} disabled={saving}>{saving ? 'Saving…' : '💾 Save'}</Button>
                 </div>
               </div>
-              <div className="px-6 py-3 border-b">
-                <Input value={pageTitle} onChange={e => setPageTitle(e.target.value)} placeholder="Page title" className="text-lg font-bold border-0 px-0 focus-visible:ring-0 bg-transparent" />
+              <div className="border-b px-4 py-3 sm:px-6">
+                <Input value={pageTitle} onChange={e => setPageTitle(e.target.value)} placeholder="Page title" className="border-0 bg-transparent px-0 text-lg font-bold focus-visible:ring-0" />
               </div>
-              <div className="flex-1 flex">
+              <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
                 {/* Editor */}
-                <div className="flex-1 flex flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                   <textarea
                     ref={textareaRef}
                     value={pageContent}
@@ -581,12 +709,12 @@ export default function WikiPanel() {
 @mention a team member
 > Blockquote
 ---"
-                    className="flex-1 px-6 py-4 text-sm font-mono bg-background resize-none outline-none border-r"
+                    className="min-h-[220px] flex-1 resize-none border-b bg-background px-4 py-4 font-mono text-sm outline-none xl:min-h-0 xl:border-b-0 xl:border-r xl:px-6"
                     spellCheck
                   />
                 </div>
                 {/* Live preview */}
-                <div className="flex-1 overflow-y-auto px-6 py-4 bg-card">
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-card px-4 py-4 xl:px-6">
                   <div className="text-[10px] text-muted-foreground uppercase font-bold mb-3 tracking-wider">Preview</div>
                   <div dangerouslySetInnerHTML={{ __html: renderMarkdown(pageContent || '*Start typing to see preview...*') }} className="text-sm leading-relaxed text-foreground [&_table]:w-full [&_table]:border-collapse" />
                 </div>
@@ -603,9 +731,9 @@ export default function WikiPanel() {
                   <span className="text-sm font-bold text-foreground">Version History — {selectedPage.title}</span>
                 </div>
               </div>
-              <div className="flex flex-1 overflow-hidden">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
                 {/* Version list */}
-                <div className="w-[280px] border-r overflow-y-auto scrollbar-thin">
+                <div className="max-h-[40vh] w-full overflow-y-auto border-b scrollbar-thin lg:max-h-none lg:w-[280px] lg:flex-shrink-0 lg:border-b-0 lg:border-r">
                   {versions.length === 0 ? (
                     <p className="text-xs text-muted-foreground p-4 text-center">No version history</p>
                   ) : versions.map(v => (

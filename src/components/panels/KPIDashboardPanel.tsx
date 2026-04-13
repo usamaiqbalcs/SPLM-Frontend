@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { kpiApi, KpiDashboardSummaryDto, KpiSnapshotDto } from '@/lib/api-aisdlc';
 import { listProducts } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -7,7 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+
+const KPI_TABLE_PAGE_SIZE = 10;
 
 interface Product { id: string; name: string }
 
@@ -49,6 +55,8 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
   const [summary, setSummary] = useState<KpiDashboardSummaryDto | null>(null);
   const [snapshots, setSnapshots] = useState<KpiSnapshotDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [breakdownPage, setBreakdownPage] = useState(1);
+  const [snapshotsPage, setSnapshotsPage] = useState(1);
 
   useEffect(() => {
     listProducts()
@@ -57,11 +65,12 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
   }, []);
 
   useEffect(() => {
+    setBreakdownPage(1);
+    setSnapshotsPage(1);
     const fetchKPIData = async () => {
       try {
         setLoading(true);
         const pid = selectedProductId === 'all' ? undefined : selectedProductId;
-        // ← was kpiApi.getSummary / kpiApi.listSnapshots (didn't exist)
         const [summaryData, snapshotsData] = await Promise.all([
           kpiApi.getDashboard(pid),
           kpiApi.getSnapshots(pid),
@@ -78,15 +87,52 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
     fetchKPIData();
   }, [selectedProductId]);
 
+  const productBreakdown = summary?.product_breakdown ?? [];
+  const breakdownTotalPages = Math.max(1, Math.ceil(productBreakdown.length / KPI_TABLE_PAGE_SIZE));
+  const pagedBreakdown = useMemo(() => {
+    const start = (breakdownPage - 1) * KPI_TABLE_PAGE_SIZE;
+    return productBreakdown.slice(start, start + KPI_TABLE_PAGE_SIZE);
+  }, [productBreakdown, breakdownPage]);
+
+  const snapshotsTotalPages = Math.max(1, Math.ceil(snapshots.length / KPI_TABLE_PAGE_SIZE));
+  const pagedSnapshots = useMemo(() => {
+    const start = (snapshotsPage - 1) * KPI_TABLE_PAGE_SIZE;
+    return snapshots.slice(start, start + KPI_TABLE_PAGE_SIZE);
+  }, [snapshots, snapshotsPage]);
+
+  const trendChartData = useMemo(() => {
+    const sorted = [...snapshots].sort(
+      (a, b) => new Date(a.snapshot_date).getTime() - new Date(b.snapshot_date).getTime(),
+    );
+    return sorted.slice(-24).map((s) => ({
+      label: new Date(s.snapshot_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      ai_auto_fix: Number(s.ai_auto_fix_rate_pct.toFixed(1)),
+      acceptance: Number(s.acceptance_pass_rate_pct.toFixed(1)),
+    }));
+  }, [snapshots]);
+
+  useEffect(() => {
+    setBreakdownPage((p) => Math.min(Math.max(1, p), breakdownTotalPages));
+  }, [breakdownTotalPages]);
+
+  useEffect(() => {
+    setSnapshotsPage((p) => Math.min(Math.max(1, p), snapshotsTotalPages));
+  }, [snapshotsTotalPages]);
+
   if (loading && !summary) {
     return (
-      <div className="h-full flex flex-col p-6 gap-6">
-        <div className="flex items-center justify-between">
-          <div><Skeleton className="h-8 w-48" /><Skeleton className="h-4 w-64 mt-2" /></div>
-          <Skeleton className="h-10 w-40" />
+      <div className="flex h-full min-w-0 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <Skeleton className="h-8 w-48 max-w-full" />
+            <Skeleton className="mt-2 h-4 w-64 max-w-full" />
+          </div>
+          <Skeleton className="h-10 w-full max-w-[200px] sm:w-40" />
         </div>
-        <div className="grid grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
         </div>
       </div>
     );
@@ -99,6 +145,9 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
       </div>
     );
   }
+
+  const pmOnTime = summary.pm_on_time_rate_pct ?? 0;
+  const avgIssues = summary.avg_total_issues_per_snapshot ?? 0;
 
   // ── All field names corrected to match KpiDashboardSummaryDto ───────────────
   const metrics: KpiMetric[] = [
@@ -139,22 +188,34 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
             : summary.total_production_incidents > 2 ? 'warning'
             : 'good',
     },
+    {
+      label: 'PM On-Time Delivery',
+      value: pmOnTime.toFixed(1),
+      unit: '%', target: 'share on-time',
+      status: pmOnTime >= 85 ? 'good' : pmOnTime >= 70 ? 'warning' : 'poor',
+    },
+    {
+      label: 'Avg QA Issues / Snapshot',
+      value: avgIssues.toFixed(1),
+      unit: '', target: 'volume',
+      status: avgIssues <= 20 ? 'good' : avgIssues <= 40 ? 'warning' : 'poor',
+    },
   ];
 
   return (
-    <div className="h-full flex flex-col p-6 gap-6 overflow-y-auto">
+    <div className="flex h-full min-w-0 flex-col gap-4 overflow-y-auto p-4 sm:gap-6 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between sticky top-0 bg-background z-10 pb-4 border-b">
-        <div>
-          <h2 className="text-2xl font-bold">KPI Dashboard</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+      <div className="sticky top-0 z-10 flex flex-col gap-3 border-b bg-background pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold sm:text-2xl">KPI Dashboard</h2>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
             {selectedProductId === 'all'
               ? 'All Products'
               : products.find((p) => p.id === selectedProductId)?.name}
           </p>
         </div>
         <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full min-w-0 sm:w-[200px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Products</SelectItem>
             {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -163,7 +224,7 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((metric, idx) => (
           <Card key={idx} className={`p-6 border-l-4 ${
             metric.status === 'good' ? 'border-l-green-500'
@@ -184,10 +245,39 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
         ))}
       </div>
 
+      {trendChartData.length > 0 && (
+        <Card className="p-4 border">
+          <h3 className="text-sm font-semibold mb-3">Historical trend (snapshots)</h3>
+          <div className="h-56 w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendChartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} width={36} />
+                <Tooltip contentStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="ai_auto_fix" name="AI auto-fix %" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="acceptance" name="Acceptance %" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
       {/* Product Breakdown — product_breakdown items are KpiSnapshotDto */}
-      {summary.product_breakdown && summary.product_breakdown.length > 0 && (
+      {productBreakdown.length > 0 && (
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <h3 className="text-lg font-semibold mb-3">Product Breakdown</h3>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-lg font-semibold">Product Breakdown</h3>
+            {breakdownTotalPages > 1 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Button type="button" variant="outline" size="sm" disabled={breakdownPage <= 1}
+                  onClick={() => setBreakdownPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                <span className="tabular-nums">{breakdownPage}/{breakdownTotalPages}</span>
+                <Button type="button" variant="outline" size="sm" disabled={breakdownPage >= breakdownTotalPages}
+                  onClick={() => setBreakdownPage((p) => p + 1)}>Next</Button>
+              </div>
+            )}
+          </div>
           <div className="border rounded-lg overflow-hidden flex-1 overflow-y-auto">
             <Table>
               <TableHeader>
@@ -202,8 +292,8 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.product_breakdown.map((snap, idx) => (
-                  <TableRow key={idx}>
+                {pagedBreakdown.map((snap, idx) => (
+                  <TableRow key={`${snap.product_id ?? snap.product_name ?? idx}-${idx}`}>
                     <TableCell className="font-medium">{snap.product_name ?? snap.product_id}</TableCell>
                     <TableCell className="text-right">
                       <Badge className={getStatusColor(getMetricStatus('auto_fix_rate', snap.ai_auto_fix_rate_pct))}>
@@ -248,7 +338,18 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
       {/* Recent Snapshots */}
       {snapshots.length > 0 && (
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <h3 className="text-lg font-semibold mb-3">Recent Snapshots</h3>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-lg font-semibold">Recent Snapshots</h3>
+            {snapshotsTotalPages > 1 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Button type="button" variant="outline" size="sm" disabled={snapshotsPage <= 1}
+                  onClick={() => setSnapshotsPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                <span className="tabular-nums">{snapshotsPage}/{snapshotsTotalPages}</span>
+                <Button type="button" variant="outline" size="sm" disabled={snapshotsPage >= snapshotsTotalPages}
+                  onClick={() => setSnapshotsPage((p) => p + 1)}>Next</Button>
+              </div>
+            )}
+          </div>
           <div className="border rounded-lg overflow-hidden flex-1 overflow-y-auto">
             <Table>
               <TableHeader>
@@ -263,8 +364,8 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {snapshots.map((snap, idx) => (
-                  <TableRow key={idx}>
+                {pagedSnapshots.map((snap, idx) => (
+                  <TableRow key={snap.id ?? `${snap.snapshot_date}-${idx}`}>
                     <TableCell className="text-sm">
                       {new Date(snap.snapshot_date).toLocaleDateString()}
                     </TableCell>

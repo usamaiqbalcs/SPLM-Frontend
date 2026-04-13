@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { listDevelopers, saveDeveloper, deleteDeveloper } from '@/lib/api';
+import { listDevelopersPage, saveDeveloper, deleteDeveloper } from '@/lib/api';
+import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -17,9 +18,42 @@ export default function DevelopersPanel() {
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10;
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useListPageSearchDebounce(search);
 
-  const load = () => { setLoading(true); listDevelopers().then(setItems).finally(() => setLoading(false)); };
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    setLoading(true);
+    listDevelopersPage({
+      page,
+      pageSize,
+      sortBy: 'name',
+      sortDir: 'asc',
+      search: debouncedSearch || undefined,
+    })
+      .then((r: Record<string, unknown> & { items?: unknown[] }) => {
+        const list = (r.items ?? (r as { Items?: unknown[] }).Items ?? []) as any[];
+        const tc = Number(r.total_count ?? (r as { totalCount?: number }).totalCount ?? 0);
+        const rawTp = r.total_pages ?? (r as { totalPages?: number }).totalPages;
+        const tp =
+          typeof rawTp === 'number' && rawTp > 0
+            ? rawTp
+            : Math.max(1, Math.ceil(tc / pageSize));
+        setItems(list);
+        setTotalPages(tp);
+        setTotalCount(tc);
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+  useEffect(() => {
+    load();
+  }, [page, debouncedSearch]);
 
   const blank = { name: '', email: '', role: 'developer', skills: '', office_location: 'Toronto', capacity_hours_week: 40, active: true };
 
@@ -70,7 +104,22 @@ export default function DevelopersPanel() {
       />
       <div className="bg-card rounded-lg border p-5">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-primary">👩‍💻 Team ({items.length})</h3>
+          <h3 className="text-lg font-bold text-primary">
+            👩‍💻 Team
+            <span className="text-muted-foreground font-normal text-sm ml-2">
+              {loading ? (
+                <span className="inline-block min-w-[7rem] animate-pulse">…</span>
+              ) : totalCount === 0 ? (
+                '(0 members)'
+              ) : (
+                <>
+                  (Showing {(page - 1) * pageSize + 1}–{(page - 1) * pageSize + items.length} of{' '}
+                  {totalCount.toLocaleString()})
+                </>
+              )}
+            </span>
+          </h3>
+          <ListPageSearchInput value={search} onChange={setSearch} className="w-40 sm:w-48" />
           {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ Add Developer</Button>}
         </div>
         {loading ? <GridCardSkeleton count={3} /> :
@@ -86,13 +135,21 @@ export default function DevelopersPanel() {
                 const loadPct = (Number(d.current_load_hours) || 0) / (d.capacity_hours_week || 40) * 100;
                 const loadColor = loadPct > 85 ? 'bg-destructive' : loadPct > 60 ? 'bg-warning' : 'bg-success';
                 return (
-                  <div key={d.id} className="bg-muted/30 rounded-lg p-4 border hover:shadow-sm transition-shadow group">
-                    <div className="flex justify-between mb-1.5">
-                      <div><div className="font-bold">{d.name}</div><div className="text-xs text-muted-foreground">{d.email}</div></div>
-                      <StatusBadge status={d.role || 'developer'} />
+                  <div key={d.id} className="bg-muted/30 rounded-lg p-4 border hover:shadow-sm transition-shadow group min-w-0 overflow-hidden">
+                    <div className="flex gap-2 items-start justify-between mb-1.5 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold truncate" title={d.name}>{d.name}</div>
+                        <div
+                          className="text-xs text-muted-foreground truncate"
+                          title={d.email}
+                        >
+                          {d.email}
+                        </div>
+                      </div>
+                      <StatusBadge status={d.role || 'developer'} className="flex-shrink-0 self-start" />
                     </div>
-                    <div className="text-xs text-muted-foreground mb-2">📍 {d.office_location}</div>
-                    <div className="flex flex-wrap gap-1 mb-3">
+                    <div className="text-xs text-muted-foreground mb-2 break-words">📍 {d.office_location}</div>
+                    <div className="flex flex-wrap gap-1 mb-3 min-h-[22px]">
                       {(d.skills || '').split(',').filter(Boolean).slice(0, 5).map((s: string) => (
                         <span key={s} className="bg-secondary text-primary px-2 py-0.5 rounded-full text-[10px] font-semibold">{s.trim()}</span>
                       ))}
@@ -110,7 +167,19 @@ export default function DevelopersPanel() {
                     </div>
                     {can('edit') && (
                       <div className="flex gap-1 mt-3 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="outline" onClick={() => setForm(d)}>Edit</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setForm({
+                              ...d,
+                              office_location: d.office_location ?? 'Toronto',
+                              capacity_hours_week: d.capacity_hours_week ?? 40,
+                              active: d.active ?? true,
+                            })}
+                        >
+                          Edit
+                        </Button>
                         <Button size="sm" variant="destructive" onClick={() => setDeleteId(d.id)}>Remove</Button>
                       </div>
                     )}
@@ -119,6 +188,21 @@ export default function DevelopersPanel() {
               })}
             </div>
         }
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

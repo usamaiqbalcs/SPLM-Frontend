@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getAnalytics, listDeployments, listProducts, listDevelopers } from '@/lib/api';
+import { getAnalytics, listDeploymentsPage, listProducts, listDevelopers } from '@/lib/api';
 import { listSprints } from '@/lib/api-sprints';
 import { StatusBadge, PriorityBar } from '@/components/StatusBadge';
 import { fmtDateTime, fmtDate, ENV_CONFIG } from '@/lib/splm-utils';
@@ -20,14 +20,14 @@ export default function DashboardPanel() {
   useEffect(() => {
     Promise.all([
       getAnalytics(),
-      listDeployments(),
+      listDeploymentsPage({ page: 1, pageSize: 6 }),
       listProducts(),
       listDevelopers(),
       listSprints(),
     ])
-      .then(([s, d, p, devs, sp]) => {
+      .then(([s, depPage, p, devs, sp]) => {
         setStats(s);
-        setDeploys(d.slice(0, 6));
+        setDeploys(depPage.items ?? []);
         setProducts(p);
         setDevelopers(devs);
         setSprints(sp);
