@@ -29,4 +29,9 @@ describe('splm-rbac', () => {
     expect(roleHasPermission(SplmRoles.Viewer, SplmPermissions.Read)).toBe(true);
     expect(roleHasPermission(SplmRoles.Viewer, SplmPermissions.Edit)).toBe(false);
   });
+
+  it('developer can edit (tasks, etc.)', () => {
+    expect(roleHasPermission(SplmRoles.Developer, SplmPermissions.Edit)).toBe(true);
+    expect(roleHasPermission(SplmRoles.Developer, SplmPermissions.Users)).toBe(false);
+  });
 });

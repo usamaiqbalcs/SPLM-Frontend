@@ -61,7 +61,12 @@ const MATRIX: Record<SplmRole, readonly string[]> = {
     SplmPermissions.Deploy,
     SplmPermissions.Release,
   ],
-  [SplmRoles.Developer]: [SplmPermissions.Read, SplmPermissions.Reports, SplmPermissions.Deploy],
+  [SplmRoles.Developer]: [
+    SplmPermissions.Read,
+    SplmPermissions.Edit,
+    SplmPermissions.Reports,
+    SplmPermissions.Deploy,
+  ],
   [SplmRoles.Viewer]: [SplmPermissions.Read],
 };
 

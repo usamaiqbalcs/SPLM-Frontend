@@ -87,7 +87,7 @@ function actionBadgeClass(action: string): string {
   if (a === 'CREATE' || a === 'LOGIN' || a === 'REGISTER' || a === 'APPROVE') {
     return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30';
   }
-  if (a === 'DELETE' || a === 'REJECT' || a === 'LOGOUT') {
+  if (a === 'DELETE' || a === 'REJECT' || a === 'LOGOUT' || a === 'SESSION_REVOKE_ALL') {
     return 'bg-destructive/15 text-destructive border-destructive/25';
   }
   if (a === 'UPDATE' || a === 'MARK_READ') {
