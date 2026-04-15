@@ -12,7 +12,7 @@ import {
   Microscope, GitBranch, Rocket, Globe, CalendarCheck, LogOut, ChevronDown,
   Bell, HelpCircle, Moon, Sun, Clock, PanelLeftClose, PanelLeft, Gauge, BookOpen,
   GitMerge, FlaskConical, Bot, ClipboardCheck, BadgeCheck, Library, BarChart3,
-  Menu, Activity, ScrollText, UserCog,
+  Menu, Activity, ScrollText, UserCog, Shield,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useSessionTimer } from '@/hooks/useSessionTimer';
@@ -85,6 +85,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: 'team', label: 'Team', icon: Users, permission: 'users' },
       { id: 'user-management', label: 'Users & roles', icon: UserCog, permission: 'identity.manage' },
+      { id: 'rbac', label: 'Role permissions', icon: Shield, permission: 'identity.manage' },
       { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText, permission: 'audit.read' },
     ],
   },
@@ -106,6 +107,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   team:           { title: 'Team',               subtitle: 'Developer management' },
   'audit-logs':   { title: 'Audit Logs',         subtitle: 'Admin activity trail across modules' },
   'user-management': { title: 'User management', subtitle: 'Accounts, app roles (profiles.role), and activation' },
+  rbac: { title: 'Role permissions', subtitle: 'Database-backed RBAC matrix (roles ↔ permissions)' },
   // AI-SDLC
   'ai-overview':  { title: 'AI-SDLC Overview',   subtitle: 'Unified pipeline health, QA, analyzer activity, and KPI trend' },
   workflow:       { title: 'Workflow Pipeline',  subtitle: 'PM Build → Dev Handoff → QA Cycle → Acceptance → Production' },

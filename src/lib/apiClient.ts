@@ -14,6 +14,7 @@
 
 import type { GlobalSearchResponse } from '@/lib/global-search-types';
 import { nullifyEmptyDateFields } from '@/lib/api-json';
+import { toast } from 'sonner';
 import {
   getAccessToken as getToken,
   looksLikeAccessJwt,
@@ -100,6 +101,15 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
   }
 
   if (!res.ok) {
+    if (res.status === 403) {
+      const err = await res.json().catch(() => ({} as Record<string, unknown>));
+      const friendly =
+        typeof err?.message === 'string' && err.message.trim()
+          ? String(err.message).trim()
+          : 'You do not have permission to perform this action.';
+      toast.error(friendly);
+      throw new Error(friendly);
+    }
     const err = await res.json().catch(() => ({} as Record<string, unknown>));
     const fromErrors = flattenApiValidationErrors(err?.errors);
     const detail = typeof err?.detail === 'string' ? err.detail.trim() : '';
@@ -598,6 +608,37 @@ export const adminUsersApi = {
     userId: string,
   ): Promise<{ success: boolean; message: string }> =>
     netFetch<{ success: boolean; message: string }>('POST', `/admin/users/${userId}/send-password-reset`),
+};
+
+// ── Admin RBAC (identity.manage) ──────────────────────────────────────────────
+
+export interface RbacRoleRowDto {
+  name: string;
+  display_name?: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface RbacPermissionRowDto {
+  name: string;
+  description?: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface RbacMatrixDto {
+  roles: RbacRoleRowDto[];
+  permissions: RbacPermissionRowDto[];
+  role_permissions: Record<string, string[]>;
+}
+
+export const adminRbacApi = {
+  getMatrix: (): Promise<RbacMatrixDto> => netFetch<RbacMatrixDto>('GET', '/admin/rbac/matrix'),
+
+  updateRolePermissions: (roleName: string, permissionNames: string[]): Promise<void> =>
+    netFetch<void>('PUT', `/admin/rbac/roles/${encodeURIComponent(roleName)}/permissions`, {
+      permissionNames,
+    }),
 };
 
 // ── Admin audit logs (audit.read) ─────────────────────────────────────────────

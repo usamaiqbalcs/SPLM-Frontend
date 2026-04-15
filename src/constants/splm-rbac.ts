@@ -1,6 +1,7 @@
 /**
  * Application RBAC — mirrors backend `SplmRoles`, `SplmPermissions`, and `RolePermissionMatrix`.
  * `profiles.role` (JWT claim `user_role` after hydration) drives these permissions.
+ * For UX, `AuthContext` prefers `GET /api/v1/auth/permissions` (server); this matrix is the offline fallback until that loads.
  * Do not confuse with roster `developers.role` (job title on the Team screen).
  */
 

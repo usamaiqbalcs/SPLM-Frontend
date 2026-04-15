@@ -58,6 +58,7 @@ const CanaryDeploymentPanel  = lazy(() => import('@/components/panels/CanaryDepl
 const GlobalSearchPage        = lazy(() => import('@/pages/GlobalSearchPage'));
 const AuditLogsPanel          = lazy(() => import('@/components/panels/AuditLogsPanel'));
 const AdminUsersPanel         = lazy(() => import('@/components/panels/AdminUsersPanel'));
+const AdminRbacPanel          = lazy(() => import('@/components/panels/AdminRbacPanel'));
 
 /** Wraps each lazy panel in a Suspense boundary with a skeleton fallback. */
 const Panel = ({ children }: { children: React.ReactNode }) => (
@@ -111,6 +112,7 @@ const App = () => (
               <Route path="team"         element={<PanelRoute segment="team"><DevelopersPanel /></PanelRoute>} />
               <Route path="audit-logs"   element={<PanelRoute segment="audit-logs"><AuditLogsPanel /></PanelRoute>} />
               <Route path="user-management" element={<PanelRoute segment="user-management"><AdminUsersPanel /></PanelRoute>} />
+              <Route path="rbac" element={<PanelRoute segment="rbac"><AdminRbacPanel /></PanelRoute>} />
 
               {/* ── AI-SDLC Pipeline routes ────────────────────────────── */}
               <Route path="ai-overview"    element={<PanelRoute segment="ai-overview"><AiSdlcOverviewPanel /></PanelRoute>} />

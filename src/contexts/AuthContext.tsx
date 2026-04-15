@@ -16,6 +16,7 @@ import {
   saveRefreshToken,
   tryRefreshAccessToken,
 } from '@/lib/token-lifecycle';
+import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
@@ -44,6 +45,11 @@ interface MeResponse {
   email: string;
   role: string;
   active: boolean;
+}
+
+interface MyPermissionsResponse {
+  role: string;
+  permissions: string[];
 }
 
 interface AuthTokensJson {
@@ -80,6 +86,15 @@ async function authFetch<T>(path: string, init: RequestInit = {}, token?: string
   };
   const res = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers });
   if (!res.ok) {
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      const friendly =
+        typeof body?.message === 'string' && body.message.trim()
+          ? String(body.message).trim()
+          : 'You do not have permission to perform this action.';
+      toast.error(friendly);
+      throw new Error(friendly);
+    }
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
     const fromErrors =
       Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
@@ -104,11 +119,21 @@ async function fetchMe(token: string): Promise<MeResponse> {
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
     const fromErrors =
       Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
+    if (res.status === 403) {
+      const friendly =
+        typeof body?.message === 'string' && body.message.trim()
+          ? String(body.message).trim()
+          : 'You do not have permission to perform this action.';
+      toast.error(friendly);
+      const err = new Error(friendly);
+      (err as Error & { status?: number }).status = res.status;
+      throw err;
+    }
     const detail =
       (typeof body?.detail === 'string' && body.detail.trim()) ||
       (typeof body?.title === 'string' && body.title.trim()) ||
       fromErrors ||
-      (res.status === 403 ? 'Forbidden' : 'Unauthorized');
+      'Unauthorized';
     const err = new Error(detail);
     (err as Error & { status?: number }).status = res.status;
     throw err;
@@ -146,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<NetUser | null>(null);
   const [session, setSession] = useState<{ access_token: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [effectivePermissions, setEffectivePermissions] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   const clearSession = useCallback(() => {
@@ -153,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setSession(null);
     setProfile(null);
+    setEffectivePermissions(null);
   }, []);
 
   const applyAuth = useCallback(
@@ -175,6 +202,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const loadEffectivePermissions = useCallback(async (token: string) => {
+    const fetchPerms = async (t: string) => {
+      const res = await fetch(`${API_BASE}/api/v1/auth/permissions`, {
+        headers: { Authorization: `Bearer ${t}`, Accept: 'application/json' },
+      });
+      if (res.status === 401 || res.status === 403) {
+        if (res.status === 403) {
+          const body = await res.json().catch(() => ({} as Record<string, unknown>));
+          const friendly =
+            typeof body?.message === 'string' && body.message.trim()
+              ? String(body.message).trim()
+              : 'You do not have permission to perform this action.';
+          const err = new Error(friendly);
+          (err as Error & { status?: number }).status = res.status;
+          throw err;
+        }
+        const err = new Error('Unauthorized');
+        (err as Error & { status?: number }).status = res.status;
+        throw err;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<MyPermissionsResponse>;
+    };
+    try {
+      try {
+        const data = await fetchPerms(token);
+        setEffectivePermissions(Array.isArray(data.permissions) ? data.permissions : []);
+      } catch (e) {
+        const st = (e as Error & { status?: number }).status;
+        if (st === 401 && (await tryRefreshAccessToken())) {
+          const t2 = getAccessToken();
+          if (t2) {
+            const data = await fetchPerms(t2);
+            setEffectivePermissions(Array.isArray(data.permissions) ? data.permissions : []);
+            return;
+          }
+        }
+        setEffectivePermissions(null);
+      }
+    } catch {
+      setEffectivePermissions(null);
+    }
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
@@ -186,11 +257,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const latest = getAccessToken() ?? token;
       applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+      await loadEffectivePermissions(latest);
     } catch (e) {
       const st = (e as Error & { status?: number }).status;
       if (st === 401 || st === 403) clearSession();
     }
-  }, [applyAuth, clearSession]);
+  }, [applyAuth, clearSession, loadEffectivePermissions]);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -199,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     fetchMeWithOptionalRefresh(token)
-      .then(me => {
+      .then(async me => {
         if (getAccessToken() !== token) return;
         if (!me.active) {
           clearSession();
@@ -207,6 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         const latest = getAccessToken() ?? token;
         applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+        await loadEffectivePermissions(latest);
       })
       .catch(() => {
         // Avoid wiping a fresh login: an in-flight /me for an old token can finish
@@ -215,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (now === token || now === null) clearSession();
       })
       .finally(() => setLoading(false));
-  }, [applyAuth, clearSession]);
+  }, [applyAuth, clearSession, loadEffectivePermissions]);
 
   useEffect(() => {
     if (!user) return;
@@ -250,7 +323,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const userRole = profile?.role ?? SplmRoles.Viewer;
   const normalizedRole = normalizeRole(userRole);
   const isAdmin = normalizedRole === SplmRoles.Admin;
-  const can = useCallback((permission: string) => roleHasPermission(userRole, permission), [userRole]);
+  const can = useCallback(
+    (permission: string) => {
+      if (effectivePermissions != null) return effectivePermissions.includes(permission);
+      return roleHasPermission(userRole, permission);
+    },
+    [effectivePermissions, userRole],
+  );
 
   const signIn = async (email: string, password: string) => {
     const data = await authFetch<AuthTokensJson>('/auth/login', {
@@ -281,6 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const latest = getAccessToken() ?? accessToken;
     applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+    await loadEffectivePermissions(latest);
   };
 
   const signUp = async (email: string, password: string, name: string) => {
@@ -312,6 +392,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const latest = getAccessToken() ?? accessToken;
     applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+    await loadEffectivePermissions(latest);
   };
 
   const signOut = async () => {

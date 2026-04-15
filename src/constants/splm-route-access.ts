@@ -23,5 +23,6 @@ export const routeSegmentRequiresPermission: Partial<Record<string, string>> = {
   /** Roster / developer directory — Admin & Manager (`users`), not Developer/Viewer. */
   team: SplmPermissions.Users,
   'user-management': SplmPermissions.IdentityManage,
+  rbac: SplmPermissions.IdentityManage,
   'audit-logs': SplmPermissions.AuditRead,
 };
