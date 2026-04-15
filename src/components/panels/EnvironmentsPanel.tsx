@@ -10,6 +10,7 @@ import {
 } from '@/lib/api';
 import {
   ListPageSearchInput,
+  ListPaginationBar,
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
@@ -21,6 +22,7 @@ import { ENV_CONFIG } from '@/lib/splm-utils';
 import { cn } from '@/lib/utils';
 import { GridCardSkeleton } from '@/components/ui/loading-skeleton';
 import { toast } from 'sonner';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/forms/SearchableSelect';
 
 const STANDARD_ENV_KEYS = ['development', 'staging', 'production'] as const;
 
@@ -156,6 +158,44 @@ export default function EnvironmentsPanel() {
     );
   }, [envs, form?.product_id]);
 
+  const envProductSelectOptions = useMemo((): SearchableSelectOption[] => {
+    const opts: SearchableSelectOption[] = [{ value: '', label: 'Select…' }];
+    if (!form) return opts;
+    const sid = normalizeGuidString(String(form.product_id ?? '').trim());
+    const missing =
+      !!form.id && !!sid && !productOptions.some((p) => p.id === sid);
+    if (missing && sid) {
+      opts.push({
+        value: sid,
+        label: String(form.product_name || '').trim()
+          ? `${form.product_name} (from record)`
+          : `Linked product ${sid.slice(0, 8)}…`,
+      });
+    }
+    opts.push(...productOptions.map((p) => ({ value: p.id, label: p.name })));
+    return opts;
+  }, [form, productOptions]);
+
+  const envSlotSelectOptions = useMemo((): SearchableSelectOption[] => {
+    if (!form || form.id) return [];
+    return [
+      ...STANDARD_ENV_KEYS.map((k) => ({
+        value: k,
+        label: `${ENV_CONFIG[k].label}${takenForProduct.has(k) ? ' (already configured)' : ''}`,
+        disabled: takenForProduct.has(k),
+      })),
+      { value: '__custom', label: 'Other name…' },
+    ];
+  }, [form, takenForProduct]);
+
+  const deployMethodSelectOptions = useMemo((): SearchableSelectOption[] => {
+    if (!form) return [];
+    return deploySelectOptions(form.deploy_method).map((o) => ({
+      value: o,
+      label: o.replace(/_/g, ' '),
+    }));
+  }, [form]);
+
   const doSave = async () => {
     if (!form.product_id || !form.environment) {
       toast.error('Product and environment are required');
@@ -267,45 +307,36 @@ export default function EnvironmentsPanel() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <Label>Product *</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background disabled:opacity-60"
-              value={selectedProductId}
-              disabled={!!form.id}
-              onChange={e => {
-                const pid = normalizeGuidString(e.target.value);
-                setForm((f: any) => {
-                  if (f.id) return { ...f, product_id: pid };
-                  const taken = new Set(
-                    envs
-                      .filter(
-                        x =>
-                          normalizeGuidString(
-                            String(x.product_id ?? (x as any).productId ?? '').trim(),
-                          ) === pid,
-                      )
-                      .map(x => String(x.environment).toLowerCase()),
-                  );
-                  let nextEnv = f.environment;
-                  if (nextEnv !== '__custom' && taken.has(String(nextEnv).toLowerCase()))
-                    nextEnv = STANDARD_ENV_KEYS.find(k => !taken.has(k)) ?? '__custom';
-                  return { ...f, product_id: pid, environment: nextEnv };
-                });
-              }}
-            >
-              <option value="">Select…</option>
-              {productMissingFromCatalog && (
-                <option value={selectedProductId}>
-                  {String(form.product_name || '').trim()
-                    ? `${form.product_name} (from record)`
-                    : `Linked product ${selectedProductId.slice(0, 8)}…`}
-                </option>
-              )}
-              {productOptions.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelect
+                options={envProductSelectOptions}
+                value={selectedProductId}
+                disabled={!!form.id}
+                onValueChange={(raw) => {
+                  const pid = normalizeGuidString(raw);
+                  setForm((f: any) => {
+                    if (f.id) return { ...f, product_id: pid };
+                    const taken = new Set(
+                      envs
+                        .filter(
+                          (x) =>
+                            normalizeGuidString(
+                              String(x.product_id ?? (x as any).productId ?? '').trim(),
+                            ) === pid,
+                        )
+                        .map((x) => String(x.environment).toLowerCase()),
+                    );
+                    let nextEnv = f.environment;
+                    if (nextEnv !== '__custom' && taken.has(String(nextEnv).toLowerCase()))
+                      nextEnv = STANDARD_ENV_KEYS.find((k) => !taken.has(k)) ?? '__custom';
+                    return { ...f, product_id: pid, environment: nextEnv };
+                  });
+                }}
+                placeholder="Select…"
+                searchPlaceholder="Search products…"
+                contentWidth="wide"
+              />
+            </div>
             {form.id && (
               <p className="text-xs text-muted-foreground mt-1">Product cannot be changed. Delete and recreate to move.</p>
             )}
@@ -330,25 +361,21 @@ export default function EnvironmentsPanel() {
               </div>
             ) : (
               <>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  value={form.environment}
-                  onChange={e =>
-                    setForm((f: any) => ({
-                      ...f,
-                      environment: e.target.value,
-                      ...(e.target.value !== '__custom' ? { custom_environment: '' } : {}),
-                    }))
-                  }
-                >
-                  {STANDARD_ENV_KEYS.map(k => (
-                    <option key={k} value={k} disabled={takenForProduct.has(k)}>
-                      {ENV_CONFIG[k].label}
-                      {takenForProduct.has(k) ? ' (already configured)' : ''}
-                    </option>
-                  ))}
-                  <option value="__custom">Other name…</option>
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    options={envSlotSelectOptions}
+                    value={form.environment}
+                    onValueChange={(v) =>
+                      setForm((f: any) => ({
+                        ...f,
+                        environment: v,
+                        ...(v !== '__custom' ? { custom_environment: '' } : {}),
+                      }))
+                    }
+                    searchPlaceholder="Search environment…"
+                    contentWidth="wide"
+                  />
+                </div>
                 {form.environment === '__custom' && (
                   <Input
                     className="mt-2 font-mono"
@@ -385,17 +412,15 @@ export default function EnvironmentsPanel() {
           </div>
           <div>
             <Label>Deploy Method</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-              value={form.deploy_method ?? 'manual'}
-              onChange={e => setForm((f: any) => ({ ...f, deploy_method: e.target.value }))}
-            >
-              {deploySelectOptions(form.deploy_method).map(o => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelect
+                options={deployMethodSelectOptions}
+                value={form.deploy_method ?? 'manual'}
+                onValueChange={(v) => setForm((f: any) => ({ ...f, deploy_method: v }))}
+                searchPlaceholder="Search deploy method…"
+                contentWidth="wide"
+              />
+            </div>
           </div>
           <div>
             <Label>Deploy Path</Label>
@@ -469,31 +494,6 @@ export default function EnvironmentsPanel() {
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-40 sm:w-48" />
-            {envTotalPages > 1 && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={envPage <= 1}
-                  onClick={() => setEnvPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </Button>
-                <span className="tabular-nums px-1">
-                  {envPage}/{envTotalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={envPage >= envTotalPages}
-                  onClick={() => setEnvPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
             {can('config') && (
               <Button onClick={openNewConfigure}>+ Configure Environment</Button>
             )}
@@ -575,6 +575,17 @@ export default function EnvironmentsPanel() {
               );
             })}
           </div>
+        )}
+        {!loading && filteredEnvs.length > 0 && (
+          <ListPaginationBar
+            className="mt-4"
+            page={envPage}
+            totalPages={envTotalPages}
+            totalItems={filteredEnvs.length}
+            pageSize={ENV_PAGE_SIZE}
+            onPageChange={setEnvPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

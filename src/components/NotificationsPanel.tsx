@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { tasksApi } from '@/lib/apiClient';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { tasksApi, notificationsApi } from '@/lib/apiClient';
 import { listDeploymentsPage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { fmtDateTime } from '@/lib/splm-utils';
@@ -17,6 +17,8 @@ interface NotificationsPanelProps {
   open: boolean;
   onClose: () => void;
   onNavigate: (tab: string) => void;
+  /** Fired whenever the unread count changes (including after mark read / reload). */
+  onUnreadCount?: (count: number) => void;
 }
 
 const TYPE_CONFIG = {
@@ -25,32 +27,19 @@ const TYPE_CONFIG = {
   critical_task: { icon: Zap,           color: 'text-danger',      bg: 'bg-danger-bg',      tab: 'tasks',       label: 'Critical' },
 };
 
-export default function NotificationsPanel({ open, onClose, onNavigate }: NotificationsPanelProps) {
+export default function NotificationsPanel({ open, onClose, onNavigate, onUnreadCount }: NotificationsPanelProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    loadNotifications();
-  }, [open]);
+  const unread = notifications.filter(n => !readIds.has(n.id)).length;
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener('mousedown', handler), 50);
-    return () => { clearTimeout(timer); document.removeEventListener('mousedown', handler); };
-  }, [open, onClose]);
-
-  const loadNotifications = async () => {
+  const refreshNotifications = useCallback(async () => {
     setLoading(true);
     try {
-      const [overdueTasks, failedPage, criticalTasks] = await Promise.all([
+      const [keysRes, overdueTasks, failedPage, criticalTasks] = await Promise.all([
+        notificationsApi.getReadKeys().catch(() => ({ keys: [] as string[] })),
         tasksApi.getAll({ isOverdue: true, pageSize: 5 }),
         listDeploymentsPage({ page: 1, pageSize: 10, status: 'failed' }).catch(() => ({ items: [] as any[] })),
         tasksApi.getAll({ priority: 'critical', pageSize: 5 }),
@@ -74,7 +63,7 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
           time: d.created_at || '',
         })),
         ...criticalTasks
-          .filter(t => !t.is_overdue) // already in overdue list if so
+          .filter(t => !t.is_overdue)
           .map(t => ({
             id: `critical-${t.id}`,
             type: 'critical_task' as const,
@@ -87,14 +76,63 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
         .slice(0, 12);
 
       setNotifications(notifs);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+      // Merge server read keys with prior client reads so closing the panel (refresh) does not
+      // wipe "read" state when the DB table is missing or POST has not completed yet.
+      const currentIds = new Set(notifs.map(n => n.id));
+      setReadIds(prev => {
+        const fromServer = new Set(keysRes.keys ?? []);
+        const next = new Set(fromServer);
+        for (const id of prev) {
+          if (currentIds.has(id)) next.add(id);
+        }
+        return next;
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /** Load on mount (header badge) and whenever the panel is opened (fresh list + read keys). */
+  useEffect(() => {
+    void refreshNotifications();
+  }, [open, refreshNotifications]);
+
+  useEffect(() => {
+    onUnreadCount?.(unread);
+  }, [unread, onUnreadCount]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const timer = setTimeout(() => document.addEventListener('mousedown', handler), 50);
+    return () => { clearTimeout(timer); document.removeEventListener('mousedown', handler); };
+  }, [open, onClose]);
+
+  const persistRead = async (ids: string[], markAll = false) => {
+    if (!ids.length && !markAll) return;
+    try {
+      await notificationsApi.addReadKeys(ids, { markAll });
+    } catch {
+      /* table may not exist yet; UI still updates locally */
+    }
   };
 
-  const markRead = (id: string) => setReadIds(prev => new Set([...prev, id]));
-  const markAllRead = () => setReadIds(new Set(notifications.map(n => n.id)));
+  const markRead = (id: string) => {
+    setReadIds(prev => new Set([...prev, id]));
+    void persistRead([id]);
+  };
 
-  const unread = notifications.filter(n => !readIds.has(n.id)).length;
+  const markAllRead = () => {
+    const all = notifications.map(n => n.id);
+    setReadIds(new Set(all));
+    void persistRead(all, true);
+  };
 
   if (!open) return null;
 
@@ -103,7 +141,6 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
       ref={panelRef}
       className="absolute left-2 right-2 top-[52px] z-50 mx-auto max-h-[min(85dvh,560px)] w-auto max-w-[360px] overflow-hidden rounded-xl border bg-card shadow-2xl animate-scale-in sm:left-auto sm:right-3 sm:mx-0 sm:w-[min(360px,calc(100vw-1.5rem))]"
     >
-      {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-foreground" />
@@ -117,6 +154,7 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
         <div className="flex items-center gap-2">
           {unread > 0 && (
             <button
+              type="button"
               onClick={markAllRead}
               className="flex items-center gap-1 text-[11px] text-primary hover:underline cursor-pointer"
             >
@@ -124,13 +162,12 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
               Mark all read
             </button>
           )}
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Notification list */}
       <div className="max-h-[420px] overflow-y-auto scrollbar-thin">
         {loading && (
           <div className="px-4 py-10 text-center text-sm text-muted-foreground">
@@ -153,7 +190,15 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
           return (
             <div
               key={n.id}
+              role="button"
+              tabIndex={0}
               onClick={() => { markRead(n.id); onNavigate(cfg.tab); onClose(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  markRead(n.id); onNavigate(cfg.tab); onClose();
+                }
+              }}
               className={cn(
                 'flex gap-3 px-4 py-3 border-b last:border-0 cursor-pointer transition-colors hover:bg-muted/40',
                 isRead && 'opacity-50'
@@ -177,11 +222,11 @@ export default function NotificationsPanel({ open, onClose, onNavigate }: Notifi
         })}
       </div>
 
-      {/* Footer */}
       {notifications.length > 0 && (
         <div className="px-4 py-2.5 border-t bg-muted/30 flex justify-between items-center">
           <span className="text-[11px] text-muted-foreground">{notifications.length} total alerts</span>
           <button
+            type="button"
             onClick={() => { onNavigate('tasks'); onClose(); }}
             className="text-[11px] text-primary hover:underline cursor-pointer"
           >

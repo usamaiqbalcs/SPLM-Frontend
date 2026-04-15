@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { kpiApi, KpiDashboardSummaryDto, KpiSnapshotDto } from '@/lib/api-aisdlc';
 import { listProducts } from '@/lib/api';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -119,6 +119,11 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
     setSnapshotsPage((p) => Math.min(Math.max(1, p), snapshotsTotalPages));
   }, [snapshotsTotalPages]);
 
+  const kpiProductFilterOptions = useMemo(
+    () => [{ value: 'all', label: 'All Products' }, ...products.map((p) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+
   if (loading && !summary) {
     return (
       <div className="flex h-full min-w-0 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
@@ -214,13 +219,17 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
               : products.find((p) => p.id === selectedProductId)?.name}
           </p>
         </div>
-        <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-          <SelectTrigger className="w-full min-w-0 sm:w-[200px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Products</SelectItem>
-            {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <div className="w-full min-w-0 sm:w-[200px]">
+          <SearchableSelect
+            triggerClassName="w-full"
+            options={kpiProductFilterOptions}
+            value={selectedProductId}
+            onValueChange={setSelectedProductId}
+            placeholder="All Products"
+            searchPlaceholder="Search products…"
+            contentWidth="wide"
+          />
+        </div>
       </div>
 
       {/* KPI Cards */}

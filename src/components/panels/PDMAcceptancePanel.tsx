@@ -4,7 +4,7 @@ import { listProductsForDropdown } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -59,6 +59,19 @@ export default function PDMAcceptancePanel() {
   useEffect(() => {
     setRecordPage((p) => Math.min(Math.max(1, p), recordTotalPages));
   }, [recordTotalPages]);
+
+  const pdmCreateProductOptions = useMemo(
+    () => products.map((p) => ({ value: p.id, label: p.name })),
+    [products],
+  );
+  const pdmCreateQaCycleOptions = useMemo(
+    () =>
+      qaCycles.map((c) => ({
+        value: c.id,
+        label: c.version_label ? `Cycle ${c.cycle_number}: ${c.version_label}` : `Cycle ${c.cycle_number}`,
+      })),
+    [qaCycles],
+  );
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -219,24 +232,28 @@ export default function PDMAcceptancePanel() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="product">Product</Label>
-                <Select value={createForm.product_id} onValueChange={(v) => setCreateForm({ ...createForm, product_id: v })}>
-                  <SelectTrigger id="product"><SelectValue placeholder="Select product" /></SelectTrigger>
-                  <SelectContent>
-                    {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="product"
+                  options={pdmCreateProductOptions}
+                  value={createForm.product_id}
+                  onValueChange={(v) => setCreateForm({ ...createForm, product_id: v })}
+                  placeholder="Select product"
+                  searchPlaceholder="Search products…"
+                  contentWidth="wide"
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="qa-cycle">QA Cycle</Label>
-                <Select value={createForm.qa_cycle_id} onValueChange={(v) => setCreateForm({ ...createForm, qa_cycle_id: v })}>
-                  <SelectTrigger id="qa-cycle"><SelectValue placeholder="Select QA cycle" /></SelectTrigger>
-                  <SelectContent>
-                    {qaCycles.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{getCycleName(c.id)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="qa-cycle"
+                  options={pdmCreateQaCycleOptions}
+                  value={createForm.qa_cycle_id}
+                  onValueChange={(v) => setCreateForm({ ...createForm, qa_cycle_id: v })}
+                  placeholder="Select QA cycle"
+                  searchPlaceholder="Search QA cycles…"
+                  contentWidth="wide"
+                />
               </div>
 
               <div className="space-y-3 border-t pt-4">

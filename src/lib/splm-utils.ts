@@ -5,6 +5,20 @@ export const semverBump = (v: string, type: string): string => {
   return `${maj}.${min}.${pat + 1}`;
 };
 
+/** Normalize API date / ISO strings for `<input type="date" />` (yyyy-MM-dd). */
+export function toHtmlDateInputValue(d: string | null | undefined): string {
+  if (d == null || d === '') return '';
+  const s = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  try {
+    const x = new Date(s);
+    if (Number.isNaN(x.getTime())) return '';
+    return x.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
 export const fmtDate = (d: string | null): string => {
   if (!d) return '—';
   try {

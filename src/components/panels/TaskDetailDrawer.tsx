@@ -12,7 +12,7 @@
  *  - deleteSubtask(taskId, id)           (was deleteSubtask(id))
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import {
   listComments, addComment, deleteComment,
   listSubtasks, addSubtask, toggleSubtask, deleteSubtask,
@@ -32,6 +32,9 @@ import {
   MessageSquare, ListChecks, Clock, User, Package, Sparkles,
 } from 'lucide-react';
 import { qaCyclesApi, taskAiApi, type QaCycleDto } from '@/lib/api-aisdlc';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
+
+const DRAWER_TASK_STATUSES = ['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'] as const;
 
 interface TaskDetailDrawerProps {
   task: any;
@@ -165,6 +168,18 @@ export default function TaskDetailDrawer({
     ? Math.round((completedSubtasks / subtasks.length) * 100)
     : 0;
 
+  const drawerStatusOptions = useMemo(() => optionsFromStrings([...DRAWER_TASK_STATUSES]), []);
+  const drawerQaCycleOptions = useMemo(
+    () => [
+      { value: '', label: 'Auto-select open cycle' },
+      ...qaCycles.map((c) => ({
+        value: c.id,
+        label: `${c.product_name} · v${c.version_label} (#${c.cycle_number}) — ${c.status}`,
+      })),
+    ],
+    [qaCycles],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -229,15 +244,17 @@ export default function TaskDetailDrawer({
             )}
           </div>
           <div className="flex-1" />
-          <select
-            className="border rounded-md px-2 py-1.5 text-xs bg-background font-semibold"
-            value={task.status || 'backlog'}
-            onChange={e => doStatusChange(e.target.value)}
-          >
-            {['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => (
-              <option key={o}>{o}</option>
-            ))}
-          </select>
+          <div className="min-w-[9rem] max-w-[11rem]">
+            <SearchableSelect
+              size="xs"
+              triggerClassName="h-8 text-xs font-semibold"
+              options={drawerStatusOptions}
+              value={task.status || 'backlog'}
+              onValueChange={doStatusChange}
+              searchPlaceholder="Status…"
+              aria-label="Change task status"
+            />
+          </div>
         </div>
 
         {/* ── Subtask progress bar ── */}
@@ -398,18 +415,16 @@ export default function TaskDetailDrawer({
               </p>
               <div>
                 <Label className="text-xs">QA cycle (optional — defaults to latest open cycle)</Label>
-                <select
-                  className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  value={qaCycleId}
-                  onChange={(e) => setQaCycleId(e.target.value)}
-                >
-                  <option value="">Auto-select open cycle</option>
-                  {qaCycles.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.product_name} · v{c.version_label} (#{c.cycle_number}) — {c.status}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    options={drawerQaCycleOptions}
+                    value={qaCycleId}
+                    onValueChange={setQaCycleId}
+                    placeholder="Auto-select open cycle"
+                    searchPlaceholder="Search QA cycles…"
+                    contentWidth="wide"
+                  />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button

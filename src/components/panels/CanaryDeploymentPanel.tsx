@@ -7,7 +7,7 @@
  * Supports promoting or rolling back canary deployments.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { listDeploymentsPage, createDeployment, listProductsForDropdown } from '@/lib/api';
 import { netFetch } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -93,6 +91,11 @@ export default function CanaryDeploymentPanel() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const canaryProductOptions = useMemo(
+    () => products.map((p: any) => ({ value: p.id, label: p.name })),
+    [products],
+  );
 
   const handleCreate = async () => {
     if (!form.product_id || !form.version) {
@@ -313,14 +316,16 @@ export default function CanaryDeploymentPanel() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Product</Label>
-              <Select value={form.product_id} onValueChange={v => setForm(f => ({ ...f, product_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
-                <SelectContent>
-                  {products.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="mt-1">
+                <SearchableSelect
+                  options={canaryProductOptions}
+                  value={form.product_id}
+                  onValueChange={(v) => setForm((f) => ({ ...f, product_id: v }))}
+                  placeholder="Select product"
+                  searchPlaceholder="Search products…"
+                  contentWidth="wide"
+                />
+              </div>
             </div>
             <div>
               <Label>Version (MAJOR.MINOR.CYCLE)</Label>

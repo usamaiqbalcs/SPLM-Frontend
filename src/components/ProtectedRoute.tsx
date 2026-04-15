@@ -14,12 +14,19 @@
  *   </Route>
  */
 
+import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function ProtectedRoute() {
-  const { user, loading } = useAuth();
+  const { user, loading, profile, signOut } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    if (!loading && user && profile && !profile.active) {
+      void signOut();
+    }
+  }, [loading, user, profile, signOut]);
 
   // AuthProvider restores the JWT from localStorage synchronously on mount,
   // so `loading` is true only for the brief window while /auth/me is called
@@ -34,6 +41,10 @@ export function ProtectedRoute() {
         replace
       />
     );
+  }
+
+  if (profile && !profile.active) {
+    return <Navigate to="/login" replace />;
   }
 
   // Authenticated — render child routes

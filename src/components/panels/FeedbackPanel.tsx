@@ -11,6 +11,7 @@ import { fmtDateTime } from '@/lib/splm-utils';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { MessageSquare, TrendingUp, AlertTriangle, Smile, Frown, Meh, Flame } from 'lucide-react';
 
 const SENTIMENT_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string; border: string }> = {
@@ -113,6 +114,31 @@ export default function FeedbackPanel() {
     avgUrgency: serverStats.total ? serverStats.avg_urgency.toFixed(1) : '0',
   }), [serverStats]);
 
+  const feedbackProductFormOptions = useMemo(
+    () => [{ value: '', label: 'Select product…' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const feedbackChannelOptions = useMemo(
+    () => CHANNELS.map((o) => ({ value: o, label: o.replace(/_/g, ' ') })),
+    [],
+  );
+  const feedbackSentimentOptions = useMemo(
+    () => Object.keys(SENTIMENT_CONFIG).map((o) => ({ value: o, label: SENTIMENT_CONFIG[o].label })),
+    [],
+  );
+  const feedbackProductFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Products' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const feedbackChannelFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Channels' }, ...CHANNELS.map((o) => ({ value: o, label: o.replace(/_/g, ' ') }))],
+    [],
+  );
+  const feedbackSentimentFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Sentiments' }, ...Object.keys(SENTIMENT_CONFIG).map((o) => ({ value: o, label: o }))],
+    [],
+  );
+
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
@@ -123,38 +149,21 @@ export default function FeedbackPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
           <Label>Product *</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.product_id || ''}
-            onChange={e => setForm((f: any) => ({ ...f, product_id: e.target.value }))}
-          >
-            <option value="">Select product…</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect options={feedbackProductFormOptions} value={form.product_id || ''} onValueChange={(v) => setForm((f: any) => ({ ...f, product_id: v }))} placeholder="Select product…" searchPlaceholder="Search products…" contentWidth="wide" />
+          </div>
         </div>
         <div>
           <Label>Channel</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.channel}
-            onChange={e => setForm((f: any) => ({ ...f, channel: e.target.value }))}
-          >
-            {CHANNELS.map(o => (
-              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect options={feedbackChannelOptions} value={form.channel} onValueChange={(v) => setForm((f: any) => ({ ...f, channel: v }))} searchPlaceholder="Search channel…" />
+          </div>
         </div>
         <div>
           <Label>Sentiment</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.sentiment}
-            onChange={e => setForm((f: any) => ({ ...f, sentiment: e.target.value }))}
-          >
-            {Object.keys(SENTIMENT_CONFIG).map(o => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect options={feedbackSentimentOptions} value={form.sentiment} onValueChange={(v) => setForm((f: any) => ({ ...f, sentiment: v }))} searchPlaceholder="Search sentiment…" />
+          </div>
         </div>
         <div>
           <Label>Urgency Score (1–10)</Label>
@@ -255,20 +264,9 @@ export default function FeedbackPanel() {
               onChange={setSearch}
               aria-label="Search feedback"
             />
-            <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={pF} onChange={e => setPF(e.target.value)}>
-              <option value="">All Products</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={chF} onChange={e => setChF(e.target.value)}>
-              <option value="">All Channels</option>
-              {CHANNELS.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
-            </select>
-            <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={sentF} onChange={e => setSentF(e.target.value)}>
-              <option value="">All Sentiments</option>
-              {Object.keys(SENTIMENT_CONFIG).map(o => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="h-9 w-full" options={feedbackProductFilterOptions} value={pF} onValueChange={setPF} placeholder="All Products" searchPlaceholder="Search products…" contentWidth="wide" />
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="h-9 w-full" options={feedbackChannelFilterOptions} value={chF} onValueChange={setChF} placeholder="All Channels" searchPlaceholder="Search channel…" />
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="h-9 w-full" options={feedbackSentimentFilterOptions} value={sentF} onValueChange={setSentF} placeholder="All Sentiments" searchPlaceholder="Search sentiment…" />
             {(chF || pF || sentF || search) && (
               <Button variant="ghost" size="sm" onClick={() => { setChF(''); setPF(''); setSentF(''); setSearch(''); }}>
                 Clear filters

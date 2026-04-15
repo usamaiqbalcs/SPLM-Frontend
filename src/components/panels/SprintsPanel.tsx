@@ -4,6 +4,7 @@ import { listTasks, listProductsForDropdown, listDevelopers } from '@/lib/api';
 import {
   DEFAULT_LIST_PAGE_SIZE,
   ListPageSearchInput,
+  ListPaginationBar,
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
@@ -12,11 +13,15 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fmtDate } from '@/lib/splm-utils';
+import { fmtDate, toHtmlDateInputValue } from '@/lib/splm-utils';
+import { DateField } from '@/components/ui/date-field';
 import { cn } from '@/lib/utils';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
+
+const SPRINT_STATUSES = ['planning', 'active', 'completed', 'cancelled'] as const;
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Calendar, Target, Zap, Sparkles } from 'lucide-react';
 import { taskAiApi } from '@/lib/api-aisdlc';
@@ -77,6 +82,11 @@ export default function SprintsPanel() {
 
   const doSave = async () => {
     if (!form.name) return toast.error('Sprint name is required');
+    if (!String(form.start_date || '').trim()) return toast.error('Start date is required.');
+    if (!String(form.end_date || '').trim()) return toast.error('End date is required.');
+    if (String(form.start_date) > String(form.end_date)) {
+      return toast.error('End date must be on or after the start date.');
+    }
     setSaving(true);
     try {
       await saveSprint({ ...form, created_by: form.created_by || user?.id });
@@ -127,6 +137,8 @@ export default function SprintsPanel() {
 
   const velocityData = getVelocityData();
 
+  const sprintStatusOptions = useMemo(() => optionsFromStrings([...SPRINT_STATUSES]), []);
+
   const runBulkTaskAnalyze = async (sprintId: string, sTasks: any[]) => {
     if (!sTasks.length) {
       toast.error('No tasks in this sprint');
@@ -171,10 +183,24 @@ export default function SprintsPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="md:col-span-2"><Label>Sprint Name *</Label><Input value={form.name || ''} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Sprint 14 — Q2 Hardening" /></div>
         <div className="md:col-span-2"><Label>Sprint Goal</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px] bg-background" value={form.goal || ''} onChange={e => setForm((f: any) => ({ ...f, goal: e.target.value }))} placeholder="Stabilize auth flow, close 5 critical bugs" /></div>
-        <div><Label>Status</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.status} onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}>{['planning', 'active', 'completed', 'cancelled'].map(o => <option key={o}>{o}</option>)}</select></div>
+        <div><Label>Status</Label><div className="mt-1"><SearchableSelect options={sprintStatusOptions} value={form.status} onValueChange={(v) => setForm((f: any) => ({ ...f, status: v }))} searchPlaceholder="Search status…" /></div></div>
         <div />
-        <div><Label>Start Date</Label><Input type="date" value={form.start_date || ''} onChange={e => setForm((f: any) => ({ ...f, start_date: e.target.value }))} /></div>
-        <div><Label>End Date</Label><Input type="date" value={form.end_date || ''} onChange={e => setForm((f: any) => ({ ...f, end_date: e.target.value }))} /></div>
+        <DateField
+          label="Start Date"
+          required
+          value={toHtmlDateInputValue(form.start_date)}
+          onChange={(v) => setForm((f: any) => ({ ...f, start_date: v }))}
+          max={toHtmlDateInputValue(form.end_date) || undefined}
+          helperText="First day of the sprint window."
+        />
+        <DateField
+          label="End Date"
+          required
+          value={toHtmlDateInputValue(form.end_date)}
+          onChange={(v) => setForm((f: any) => ({ ...f, end_date: v }))}
+          min={toHtmlDateInputValue(form.start_date) || undefined}
+          helperText="Must be on or after the start date."
+        />
       </div>
       <div className="flex gap-2"><Button onClick={doSave} disabled={saving}>{saving ? 'Saving…' : '💾 Save'}</Button><Button variant="outline" onClick={() => setForm(null)}>Cancel</Button></div>
     </div>
@@ -215,15 +241,6 @@ export default function SprintsPanel() {
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-36 sm:w-44" />
-            {sprintTotalPages > 1 && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Button type="button" variant="outline" size="sm" disabled={sprintPage <= 1}
-                  onClick={() => setSprintPage((p) => Math.max(1, p - 1))}>Prev</Button>
-                <span className="tabular-nums px-1">{sprintPage}/{sprintTotalPages}</span>
-                <Button type="button" variant="outline" size="sm" disabled={sprintPage >= sprintTotalPages}
-                  onClick={() => setSprintPage((p) => p + 1)}>Next</Button>
-              </div>
-            )}
             {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Sprint</Button>}
           </div>
         </div>
@@ -264,7 +281,22 @@ export default function SprintsPanel() {
                           {s.goal && <p className="text-xs text-muted-foreground mt-0.5">{s.goal}</p>}
                         </div>
                         <div className="flex gap-1">
-                          {can('edit') && <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setForm(s); }}>Edit</Button>}
+                          {can('edit') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setForm({
+                                  ...s,
+                                  start_date: toHtmlDateInputValue(s.start_date),
+                                  end_date: toHtmlDateInputValue(s.end_date),
+                                });
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
                           {can('edit') && <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }}>Delete</Button>}
                         </div>
                       </div>
@@ -368,6 +400,17 @@ export default function SprintsPanel() {
               })}
             </div>
         }
+        {!loading && filteredSprints.length > 0 && (
+          <ListPaginationBar
+            className="mt-4"
+            page={sprintPage}
+            totalPages={sprintTotalPages}
+            totalItems={filteredSprints.length}
+            pageSize={DEFAULT_LIST_PAGE_SIZE}
+            onPageChange={setSprintPage}
+            disabled={loading}
+          />
+        )}
       </div>
     </div>
   );

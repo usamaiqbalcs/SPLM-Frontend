@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listResearchPage, saveResearch, deleteResearch, listProductsForDropdown } from '@/lib/api';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,12 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { fmtDateTime } from '@/lib/splm-utils';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
+import { SearchableProductMultiSelect } from '@/components/forms/SearchableProductMultiSelect';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { FlaskConical, ExternalLink, Clock, Zap, AlertTriangle, BookOpen } from 'lucide-react';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
+import { FlaskConical, ExternalLink, Clock, Zap, AlertTriangle, BookOpen, Circle } from 'lucide-react';
 
 const URGENCY_CONFIG: Record<string, { label: string; color: string; badge: string }> = {
   low:            { label: 'Low',          color: 'text-muted-foreground', badge: 'bg-muted text-muted-foreground' },
@@ -21,6 +24,72 @@ const URGENCY_CONFIG: Record<string, { label: string; color: string; badge: stri
 };
 
 const URGENCY_LEVELS = ['low', 'medium', 'within_30_days', 'immediate'] as const;
+
+/** First product visible; “Remaining product(s)” + circle opens hover list of the rest. */
+function ResearchAffectedProductsRow({
+  productIds,
+  resolveName,
+}: {
+  productIds: string[];
+  resolveName: (id: string) => string | null;
+}) {
+  if (productIds.length === 0) return null;
+
+  const firstId = productIds[0];
+  const firstLabel = resolveName(firstId) ?? firstId;
+  const restIds = productIds.slice(1);
+  const rest = restIds.length;
+
+  return (
+    <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-0.5">
+      <span
+        className="max-w-[11rem] min-w-0 truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-primary"
+        title={firstLabel}
+      >
+        {firstLabel}
+      </span>
+      {rest > 0 && (
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="group flex shrink-0 cursor-help items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-left transition-colors hover:bg-muted"
+              aria-label={`${rest} remaining affected ${rest === 1 ? 'product' : 'products'}; hover to list`}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Circle
+                className="h-3 w-3 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="text-[10px] font-semibold leading-tight text-muted-foreground transition-colors group-hover:text-foreground">
+                {rest === 1 ? 'Remaining product' : 'Remaining products'}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start" className="max-w-sm p-0">
+            <div className="border-b border-border px-3 py-2">
+              <p className="text-[11px] font-semibold text-muted-foreground">
+                Other affected products ({rest})
+              </p>
+            </div>
+            <ul className="max-h-52 overflow-y-auto px-3 py-2 text-xs leading-snug">
+              {restIds.map((id) => {
+                const label = resolveName(id) ?? id;
+                return (
+                  <li key={id} className="truncate border-b border-border/50 py-1 last:border-b-0" title={label}>
+                    {label}
+                  </li>
+                );
+              })}
+            </ul>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 
 export default function ResearchPanel() {
   const { can, user } = useAuth();
@@ -66,12 +135,12 @@ export default function ResearchPanel() {
         setProducts(p);
         setTotalPages(Math.max(1, data.total_pages));
         setTotalCount(data.total_count);
-        const st = data.stats as typeof serverStats;
+        const st = data.stats as typeof serverStats & { within30_days?: number };
         setServerStats({
           total: st?.total ?? 0,
           low: st?.low ?? 0,
           medium: st?.medium ?? 0,
-          within_30_days: st?.within_30_days ?? 0,
+          within_30_days: st?.within_30_days ?? st?.within30_days ?? 0,
           immediate: st?.immediate ?? 0,
         });
       })
@@ -110,6 +179,19 @@ export default function ResearchPanel() {
     total: serverStats.total,
   }), [serverStats]);
 
+  const researchProductFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Products' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const researchUrgencyFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Urgencies' }, ...URGENCY_LEVELS.map((o) => ({ value: o, label: URGENCY_CONFIG[o].label }))],
+    [],
+  );
+  const researchUrgencyFormOptions = useMemo(
+    () => URGENCY_LEVELS.map((o) => ({ value: o, label: URGENCY_CONFIG[o].label })),
+    [],
+  );
+
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
@@ -129,15 +211,14 @@ export default function ResearchPanel() {
         </div>
         <div>
           <Label>Urgency</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.urgency}
-            onChange={e => setForm((f: any) => ({ ...f, urgency: e.target.value }))}
-          >
-            {URGENCY_LEVELS.map(o => (
-              <option key={o} value={o}>{URGENCY_CONFIG[o].label}</option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect
+              options={researchUrgencyFormOptions}
+              value={form.urgency}
+              onValueChange={(v) => setForm((f: any) => ({ ...f, urgency: v }))}
+              searchPlaceholder="Search urgency…"
+            />
+          </div>
         </div>
         <div>
           <Label>Source URL</Label>
@@ -148,32 +229,13 @@ export default function ResearchPanel() {
             placeholder="https://…"
           />
         </div>
-        <div className="md:col-span-2">
-          <Label>Affected Products</Label>
-          <div className="mt-1 flex flex-wrap gap-2 p-2 border rounded-md bg-background min-h-[40px]">
-            {products.map(p => {
-              const ids: string[] = (form.affected_products || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-              const checked = ids.includes(p.id);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    const next = checked ? ids.filter(id => id !== p.id) : [...ids, p.id];
-                    setForm((f: any) => ({ ...f, affected_products: next.join(',') }));
-                  }}
-                  className={cn(
-                    'px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer',
-                    checked ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:border-primary/50'
-                  )}
-                >
-                  {p.name}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Click to toggle which products this research affects</p>
-        </div>
+        <SearchableProductMultiSelect
+          label="Affected Products"
+          products={products}
+          value={form.affected_products || ''}
+          onChange={(csv) => setForm((f: any) => ({ ...f, affected_products: csv }))}
+          helpText="Search and select one or more products this research affects."
+        />
         <div className="md:col-span-2">
           <Label>Analysis / Notes</Label>
           <textarea
@@ -244,14 +306,8 @@ export default function ResearchPanel() {
               onChange={setSearch}
               aria-label="Search research"
             />
-            <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={pF} onChange={e => setPF(e.target.value)}>
-              <option value="">All Products</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <select className="border rounded-md px-3 py-2 text-sm bg-background h-9" value={urgF} onChange={e => setUrgF(e.target.value)}>
-              <option value="">All Urgencies</option>
-              {URGENCY_LEVELS.map(o => <option key={o} value={o}>{URGENCY_CONFIG[o].label}</option>)}
-            </select>
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="h-9 w-full" options={researchProductFilterOptions} value={pF} onValueChange={setPF} placeholder="All Products" searchPlaceholder="Search products…" contentWidth="wide" />
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="h-9 w-full" options={researchUrgencyFilterOptions} value={urgF} onValueChange={setUrgF} placeholder="All Urgencies" searchPlaceholder="Search urgency…" />
             {(urgF || pF || debouncedSearch) && (
               <Button variant="ghost" size="sm" onClick={() => { setUrgF(''); setPF(''); setSearch(''); }}>
                 Clear
@@ -275,7 +331,6 @@ export default function ResearchPanel() {
               {items.map(r => {
                 const cfg = URGENCY_CONFIG[r.urgency] ?? URGENCY_CONFIG.low;
                 const affectedIds: string[] = (r.affected_products || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-                const affectedNames = affectedIds.map(id => pname(id)).filter(Boolean);
                 const isExpanded = expanded === r.id;
                 return (
                   <div
@@ -288,13 +343,11 @@ export default function ResearchPanel() {
                       onClick={() => setExpanded(isExpanded ? null : r.id)}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', cfg.badge)}>
+                        <div className="mb-1.5 flex flex-wrap items-start gap-2">
+                          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-bold', cfg.badge)}>
                             {cfg.label}
                           </span>
-                          {affectedNames.map((n, i) => (
-                            <span key={i} className="bg-secondary text-primary text-[10px] font-semibold px-2 py-0.5 rounded-full">{n}</span>
-                          ))}
+                          <ResearchAffectedProductsRow productIds={affectedIds} resolveName={pname} />
                         </div>
                         <div className="font-semibold text-sm text-foreground">{r.topic}</div>
                         {r.source_url && (
@@ -336,17 +389,15 @@ export default function ResearchPanel() {
             </div>
           )
         }
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-              {totalCount > 0 && <span className="ml-2">({items.length} of {totalCount.toLocaleString()} shown)</span>}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-            </div>
-          </div>
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

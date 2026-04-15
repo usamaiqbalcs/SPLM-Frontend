@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { listDevelopersPage, saveDeveloper, deleteDeveloper } from '@/lib/api';
 import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +10,10 @@ import { cn } from '@/lib/utils';
 import { GridCardSkeleton } from '@/components/ui/loading-skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
+
+const DEV_ROLES = ['developer', 'senior_developer', 'team_lead', 'manager', 'admin'] as const;
+const OFFICES = ['Toronto', 'Chicago', 'Vancouver', 'Seoul', 'Tokyo', 'Dubai', 'Remote'] as const;
 
 export default function DevelopersPanel() {
   const { can } = useAuth();
@@ -72,6 +76,16 @@ export default function DevelopersPanel() {
     finally { setDeleteId(null); }
   };
 
+  const devRoleOptions = useMemo(() => optionsFromStrings([...DEV_ROLES]), []);
+  const officeOptions = useMemo(() => OFFICES.map((o) => ({ value: o, label: o })), []);
+  const activeStatusOptions = useMemo(
+    () => [
+      { value: '1', label: 'Active' },
+      { value: '0', label: 'Inactive' },
+    ],
+    [],
+  );
+
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
       <div className="flex justify-between items-center mb-5">
@@ -81,10 +95,10 @@ export default function DevelopersPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div><Label>Name *</Label><Input value={form.name || ''} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} /></div>
         <div><Label>Email *</Label><Input type="email" value={form.email || ''} onChange={e => setForm((f: any) => ({ ...f, email: e.target.value }))} /></div>
-        <div><Label>Role</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.role} onChange={e => setForm((f: any) => ({ ...f, role: e.target.value }))}>{['developer', 'senior_developer', 'team_lead', 'manager', 'admin'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Office</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.office_location} onChange={e => setForm((f: any) => ({ ...f, office_location: e.target.value }))}>{['Toronto', 'Chicago', 'Vancouver', 'Seoul', 'Tokyo', 'Dubai', 'Remote'].map(o => <option key={o}>{o}</option>)}</select></div>
+        <div><Label>Role</Label><div className="mt-1"><SearchableSelect options={devRoleOptions} value={form.role} onValueChange={(v) => setForm((f: any) => ({ ...f, role: v }))} searchPlaceholder="Search role…" /></div></div>
+        <div><Label>Office</Label><div className="mt-1"><SearchableSelect options={officeOptions} value={form.office_location} onValueChange={(v) => setForm((f: any) => ({ ...f, office_location: v }))} searchPlaceholder="Search office…" /></div></div>
         <div><Label>Capacity (hrs/wk)</Label><Input type="number" min={1} max={60} value={form.capacity_hours_week || 40} onChange={e => setForm((f: any) => ({ ...f, capacity_hours_week: parseInt(e.target.value) || 40 }))} /></div>
-        <div><Label>Status</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.active ? '1' : '0'} onChange={e => setForm((f: any) => ({ ...f, active: e.target.value === '1' }))}><option value="1">Active</option><option value="0">Inactive</option></select></div>
+        <div><Label>Status</Label><div className="mt-1"><SearchableSelect options={activeStatusOptions} value={form.active ? '1' : '0'} onValueChange={(v) => setForm((f: any) => ({ ...f, active: v === '1' }))} searchPlaceholder="Search status…" /></div></div>
         <div className="md:col-span-2"><Label>Skills (comma-separated)</Label><Input value={form.skills || ''} onChange={e => setForm((f: any) => ({ ...f, skills: e.target.value }))} placeholder="Python, React, Flask, AWS, ML" /></div>
       </div>
       <div className="flex gap-2"><Button onClick={doSave} disabled={saving}>{saving ? 'Saving…' : '💾 Save'}</Button><Button variant="outline" onClick={() => setForm(null)}>Cancel</Button></div>
@@ -120,7 +134,7 @@ export default function DevelopersPanel() {
             </span>
           </h3>
           <ListPageSearchInput value={search} onChange={setSearch} className="w-40 sm:w-48" />
-          {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ Add Developer</Button>}
+          {can('users') && <Button onClick={() => setForm({ ...blank })}>+ Add Developer</Button>}
         </div>
         {loading ? <GridCardSkeleton count={3} /> :
           items.length === 0 ? (
@@ -165,7 +179,7 @@ export default function DevelopersPanel() {
                         <div className={cn('h-full rounded-full transition-all', loadColor)} style={{ width: `${Math.min(loadPct, 100)}%` }} />
                       </div>
                     </div>
-                    {can('edit') && (
+                    {can('users') && (
                       <div className="flex gap-1 mt-3 opacity-60 group-hover:opacity-100 transition-opacity">
                         <Button
                           size="sm"

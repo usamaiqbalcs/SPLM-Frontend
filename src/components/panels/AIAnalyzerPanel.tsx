@@ -15,6 +15,7 @@ import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { fmtDateTime } from '@/lib/splm-utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -121,6 +122,19 @@ export default function AIAnalyzerPanel() {
     );
   }, [reports, debouncedListSearch]);
 
+  const analyzerCycleOptions = useMemo(
+    () => [
+      { value: '', label: 'Select a cycle…' },
+      ...cycles
+        .filter((c) => c.status !== 'closed')
+        .map((c) => ({
+          value: c.id,
+          label: `${c.product_name} • v${c.version_label} (Cycle #${c.cycle_number})`,
+        })),
+    ],
+    [cycles],
+  );
+
   const [reportListPage, setReportListPage] = useState(1);
   const reportTotalPages = Math.max(1, Math.ceil(filteredReports.length / DEFAULT_LIST_PAGE_SIZE));
   const pagedFilteredReports = useMemo(() => {
@@ -153,19 +167,14 @@ export default function AIAnalyzerPanel() {
           </AlertDialogHeader>
           <div className="py-3">
             <Label className="mb-2 block">QA Cycle *</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            <SearchableSelect
+              options={analyzerCycleOptions}
               value={selectedCycle}
-              onChange={e => setSelectedCycle(e.target.value)}
-              autoFocus
-            >
-              <option value="">Select a cycle…</option>
-              {cycles.filter(c => c.status !== 'closed').map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.product_name} • v{c.version_label} (Cycle #{c.cycle_number})
-                </option>
-              ))}
-            </select>
+              onValueChange={setSelectedCycle}
+              placeholder="Select a cycle…"
+              searchPlaceholder="Search QA cycles…"
+              contentWidth="wide"
+            />
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

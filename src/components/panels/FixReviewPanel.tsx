@@ -7,6 +7,16 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
+
+const FIX_REJECTION_REASON_OPTIONS = [
+  { value: '', label: 'Select reason…' },
+  { value: 'logic_error', label: 'Logic Error' },
+  { value: 'performance_issue', label: 'Performance Issue' },
+  { value: 'security_risk', label: 'Security Risk' },
+  { value: 'style_violation', label: 'Style Violation' },
+  { value: 'scope_creep', label: 'Scope Creep' },
+];
 import {
   AlertDialog,
   AlertDialogAction,
@@ -158,6 +168,19 @@ export default function FixReviewPanel() {
 
   const severityOptions = ['P1', 'P2', 'P3', 'P4'];
 
+  const fixReviewProductFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Products' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const fixReviewCycleFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Cycles' }, ...cycles.map((c) => ({ value: c.id, label: `v${c.version_label}` }))],
+    [cycles],
+  );
+  const fixReviewSeverityFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Severities' }, ...severityOptions.map((s) => ({ value: s, label: s }))],
+    [],
+  );
+
   return (
     <div className="animate-fade-in space-y-4">
       {/* ── Rejection dialog ── */}
@@ -170,19 +193,14 @@ export default function FixReviewPanel() {
           <div className="space-y-4 py-3">
             <div>
               <Label className="mb-2 block">Rejection Reason *</Label>
-              <select
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              <SearchableSelect
+                options={FIX_REJECTION_REASON_OPTIONS}
                 value={rejectionReason}
-                onChange={e => setRejectionReason(e.target.value)}
-                autoFocus
-              >
-                <option value="">Select reason…</option>
-                <option value="logic_error">Logic Error</option>
-                <option value="performance_issue">Performance Issue</option>
-                <option value="security_risk">Security Risk</option>
-                <option value="style_violation">Style Violation</option>
-                <option value="scope_creep">Scope Creep</option>
-              </select>
+                onValueChange={setRejectionReason}
+                placeholder="Select reason…"
+                searchPlaceholder="Search reason…"
+                contentWidth="wide"
+              />
             </div>
             <div>
               <Label className="mb-2 block">Rejection Notes *</Label>
@@ -239,36 +257,35 @@ export default function FixReviewPanel() {
         <div className="bg-muted/30 rounded-lg p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
           <div>
             <Label className="mb-2 block text-xs">Product</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            <SearchableSelect
+              options={fixReviewProductFilterOptions}
               value={productFilter}
-              onChange={e => setProductFilter(e.target.value)}
-            >
-              <option value="">All Products</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+              onValueChange={setProductFilter}
+              placeholder="All Products"
+              searchPlaceholder="Search products…"
+              contentWidth="wide"
+            />
           </div>
           <div>
             <Label className="mb-2 block text-xs">QA Cycle</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            <SearchableSelect
+              options={fixReviewCycleFilterOptions}
               value={cycleFilter}
-              onChange={e => setCycleFilter(e.target.value)}
-            >
-              <option value="">All Cycles</option>
-              {cycles.map(c => <option key={c.id} value={c.id}>v{c.version_label}</option>)}
-            </select>
+              onValueChange={setCycleFilter}
+              placeholder="All Cycles"
+              searchPlaceholder="Search cycles…"
+              contentWidth="wide"
+            />
           </div>
           <div>
             <Label className="mb-2 block text-xs">Severity</Label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            <SearchableSelect
+              options={fixReviewSeverityFilterOptions}
               value={severityFilter}
-              onChange={e => setSeverityFilter(e.target.value)}
-            >
-              <option value="">All Severities</option>
-              {severityOptions.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+              onValueChange={setSeverityFilter}
+              placeholder="All Severities"
+              searchPlaceholder="Search severity…"
+            />
           </div>
           <div className="flex items-center gap-2">
             <input

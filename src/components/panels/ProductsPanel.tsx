@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { listProductsPage, getProduct, saveProduct, deleteProduct } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
@@ -9,6 +9,11 @@ import { Label } from '@/components/ui/label';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
+
+const MARKET_CATEGORIES = ['Enterprise SaaS', 'Defense', 'DaaS', 'IoT', 'Internal Tool', 'Other'] as const;
+const PRODUCT_STATUSES = ['active', 'maintenance', 'sunset', 'archived'] as const;
+const UPDATE_CADENCES = ['monthly', 'quarterly', 'yearly', 'on_demand'] as const;
 
 /** Map legacy UI/DB status values to values allowed by chk_product_status. */
 function normalizeProductStatus(s: string | undefined): string {
@@ -105,6 +110,17 @@ export default function ProductsPanel() {
     finally { setDeleteId(null); }
   };
 
+  const marketCategoryOptions = useMemo(
+    () => MARKET_CATEGORIES.map((c) => ({ value: c, label: c })),
+    [],
+  );
+  const productStatusOptions = useMemo(() => optionsFromStrings([...PRODUCT_STATUSES]), []);
+  const productStatusFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Statuses' }, ...optionsFromStrings([...PRODUCT_STATUSES])],
+    [],
+  );
+  const updateCadenceOptions = useMemo(() => optionsFromStrings([...UPDATE_CADENCES]), []);
+
   if (form) return (
     <div className="bg-card rounded-lg border p-6 animate-fade-in">
       <div className="flex justify-between items-center mb-5">
@@ -113,9 +129,9 @@ export default function ProductsPanel() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div><Label>Product Name *</Label><Input value={form.name || ''} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} /></div>
-        <div><Label>Market Category</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.market_category} onChange={e => setForm((f: any) => ({ ...f, market_category: e.target.value }))}>{['Enterprise SaaS', 'Defense', 'DaaS', 'IoT', 'Internal Tool', 'Other'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Status</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.status} onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}>{['active', 'maintenance', 'sunset', 'archived'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Update Cadence</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.update_cadence} onChange={e => setForm((f: any) => ({ ...f, update_cadence: e.target.value }))}>{['monthly', 'quarterly', 'yearly', 'on_demand'].map(o => <option key={o}>{o}</option>)}</select></div>
+        <div><Label>Market Category</Label><div className="mt-1"><SearchableSelect options={marketCategoryOptions} value={form.market_category} onValueChange={(v) => setForm((f: any) => ({ ...f, market_category: v }))} searchPlaceholder="Search category…" contentWidth="wide" /></div></div>
+        <div><Label>Status</Label><div className="mt-1"><SearchableSelect options={productStatusOptions} value={form.status} onValueChange={(v) => setForm((f: any) => ({ ...f, status: v }))} searchPlaceholder="Search status…" /></div></div>
+        <div><Label>Update Cadence</Label><div className="mt-1"><SearchableSelect options={updateCadenceOptions} value={form.update_cadence} onValueChange={(v) => setForm((f: any) => ({ ...f, update_cadence: v }))} searchPlaceholder="Search cadence…" /></div></div>
         <div><Label>Current Version</Label><Input className="font-mono" value={form.current_version || '1.0.0'} onChange={e => setForm((f: any) => ({ ...f, current_version: e.target.value }))} /></div>
         <div><Label>Customer Count</Label><Input type="number" min={0} value={form.customer_count || 0} onChange={e => setForm((f: any) => ({ ...f, customer_count: parseInt(e.target.value) || 0 }))} /></div>
         <div className="md:col-span-2"><Label>Description</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm min-h-[80px] bg-background" value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
@@ -150,10 +166,7 @@ export default function ProductsPanel() {
           </h3>
           <div className="flex gap-2 flex-wrap">
             <ListPageSearchInput value={filter} onChange={setFilter} />
-            <select className="border rounded-md px-3 py-2 text-sm bg-background" value={statusF} onChange={e => setStatusF(e.target.value)}>
-              <option value="">All Statuses</option>
-              {['active', 'maintenance', 'sunset', 'archived'].map(o => <option key={o}>{o}</option>)}
-            </select>
+            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="w-full" options={productStatusFilterOptions} value={statusF} onValueChange={setStatusF} placeholder="All Statuses" searchPlaceholder="Search status…" />
             {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Product</Button>}
           </div>
         </div>

@@ -6,16 +6,15 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { fmtDate, semverBump } from '@/lib/splm-utils';
+import { fmtDate, semverBump, toHtmlDateInputValue } from '@/lib/splm-utils';
+import { DateField } from '@/components/ui/date-field';
 import { cn } from '@/lib/utils';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { toast } from 'sonner';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
 
-function toDateInputValue(d: unknown): string {
-  if (d == null || d === '') return '';
-  const s = typeof d === 'string' ? d : String(d);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
+const VERSION_TYPES = ['major', 'minor', 'patch', 'hotfix'] as const;
+const VERSION_STATUSES = ['planned', 'in_development', 'testing', 'staging', 'released'] as const;
 
 /** Normalize API row (snake_case) for the edit form; list rows were missing fields before Dapper aliases. */
 function mapVersionToForm(row: Record<string, unknown>) {
@@ -23,7 +22,7 @@ function mapVersionToForm(row: Record<string, unknown>) {
     ...row,
     version_type: (row.version_type as string) || 'minor',
     status: (row.status as string) || 'planned',
-    planned_date: toDateInputValue(row.planned_date),
+    planned_date: toHtmlDateInputValue(row.planned_date as string | null),
     tasks_included: row.tasks_included != null ? String(row.tasks_included) : '',
   };
 }
@@ -58,6 +57,13 @@ export default function VersionControlPanel() {
     );
   }, [versions, debouncedVerSearch]);
 
+  const versionTypeOptions = useMemo(() => optionsFromStrings([...VERSION_TYPES]), []);
+  const versionStatusFormOptions = useMemo(() => optionsFromStrings([...VERSION_STATUSES]), []);
+  const productPickerOptions = useMemo(
+    () => [{ value: '', label: 'Select product…' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+
   const curVer = versions.find(v => v.is_current) || versions[0];
   const blank = (type = 'minor') => ({
     product_id: selProd, version: curVer ? semverBump(curVer.version, type) : '1.0.0',
@@ -83,11 +89,16 @@ export default function VersionControlPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div><Label>Version *</Label><Input className="font-mono" value={form.version || ''} onChange={e => setForm((f: any) => ({ ...f, version: e.target.value }))} /></div>
         <div><Label>Title *</Label><Input value={form.title || ''} onChange={e => setForm((f: any) => ({ ...f, title: e.target.value }))} placeholder="Azure AD SSO Integration" /></div>
-        <div><Label>Version Type</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.version_type || 'minor'} onChange={e => setForm((f: any) => ({ ...f, version_type: e.target.value }))}>{['major', 'minor', 'patch', 'hotfix'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Status</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.status || 'planned'} onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}>{['planned', 'in_development', 'testing', 'staging', 'released'].map(o => <option key={o}>{o}</option>)}</select></div>
+        <div><Label>Version Type</Label><div className="mt-1"><SearchableSelect options={versionTypeOptions} value={form.version_type || 'minor'} onValueChange={(v) => setForm((f: any) => ({ ...f, version_type: v }))} searchPlaceholder="Search type…" /></div></div>
+        <div><Label>Status</Label><div className="mt-1"><SearchableSelect options={versionStatusFormOptions} value={form.status || 'planned'} onValueChange={(v) => setForm((f: any) => ({ ...f, status: v }))} searchPlaceholder="Search status…" /></div></div>
         <div><Label>Git Branch</Label><Input className="font-mono" value={form.git_branch || ''} onChange={e => setForm((f: any) => ({ ...f, git_branch: e.target.value }))} placeholder="release/2.1.0" /></div>
         <div><Label>Git Commit</Label><Input className="font-mono" value={form.git_commit || ''} onChange={e => setForm((f: any) => ({ ...f, git_commit: e.target.value }))} placeholder="abc1234" /></div>
-        <div><Label>Planned Date</Label><Input type="date" value={form.planned_date || ''} onChange={e => setForm((f: any) => ({ ...f, planned_date: e.target.value }))} /></div>
+        <DateField
+          label="Planned Date"
+          value={toHtmlDateInputValue(form.planned_date)}
+          onChange={(v) => setForm((f: any) => ({ ...f, planned_date: v }))}
+          helperText="Optional planned release day."
+        />
         <div><Label>Tasks Included</Label><Input value={form.tasks_included || ''} onChange={e => setForm((f: any) => ({ ...f, tasks_included: e.target.value }))} placeholder="Comma-separated task IDs" /></div>
         <div className="md:col-span-2"><Label>Release Notes</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm min-h-[80px] bg-background" value={form.release_notes || ''} onChange={e => setForm((f: any) => ({ ...f, release_notes: e.target.value }))} /></div>
         <div className="md:col-span-2"><Label>Changelog</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm font-mono min-h-[100px] bg-background" value={form.changelog || ''} onChange={e => setForm((f: any) => ({ ...f, changelog: e.target.value }))} placeholder="[feat] Add MFA\n[fix] Fix rounding\n[break] Remove v1 API" /></div>
@@ -129,7 +140,17 @@ export default function VersionControlPanel() {
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-lg font-bold text-primary">🏷️ Version Control</h3>
           <div className="flex gap-2 flex-wrap items-center">
-            <select className="border rounded-md px-3 py-2 text-sm w-52 bg-background" value={selProd} onChange={e => { setVerSearch(''); setSelProd(e.target.value); }}><option value="">Select product…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <div className="w-52 min-w-[10rem]">
+              <SearchableSelect
+                size="sm"
+                options={productPickerOptions}
+                value={selProd}
+                onValueChange={(v) => { setVerSearch(''); setSelProd(v); }}
+                placeholder="Select product…"
+                searchPlaceholder="Search products…"
+                contentWidth="wide"
+              />
+            </div>
             {selProd && (
               <ListPageSearchInput value={verSearch} onChange={setVerSearch} className="w-36 sm:w-44" aria-label="Search versions" />
             )}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { listDeploymentsPage, createDeployment, updateDeploymentStatus, listProductsForDropdown } from '@/lib/api';
 import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,11 @@ import { cn } from '@/lib/utils';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
 import { toast } from 'sonner';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
+
+const DEPLOY_TYPES = ['full', 'hotfix', 'rollback', 'config_only', 'migration_only'] as const;
+const DEPLOY_ENV_FILTERS = ['development', 'staging', 'production'] as const;
+const DEPLOY_STATUS_FILTERS = ['pending', 'building', 'testing', 'deploying', 'success', 'failed', 'rolled_back'] as const;
 
 function Pipeline({ status }: { status: string }) {
   const steps = [
@@ -93,6 +98,20 @@ export default function DeploymentsPanel() {
   const pname = (id: string) => products.find(p => p.id === id)?.name || id?.slice(0, 8);
   const blank = { product_id: '', version: '', environment: 'development', deploy_type: 'full', branch: '', commit_sha: '', rollback_version: '' };
 
+  const deployProductOptions = useMemo(
+    () => [{ value: '', label: 'Select…' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const deployTypeOptions = useMemo(() => optionsFromStrings([...DEPLOY_TYPES]), []);
+  const envFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Environments' }, ...optionsFromStrings([...DEPLOY_ENV_FILTERS])],
+    [],
+  );
+  const deployStatusFilterOptions = useMemo(
+    () => [{ value: '', label: 'All Statuses' }, ...optionsFromStrings([...DEPLOY_STATUS_FILTERS])],
+    [],
+  );
+
   const nextStatus: Record<string, string> = { pending: 'building', building: 'testing', testing: 'deploying', deploying: 'success' };
 
   const doCreate = async () => {
@@ -134,9 +153,9 @@ export default function DeploymentsPanel() {
       </div>
       {form.environment === 'production' && <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 mb-4 text-sm text-destructive font-semibold">⚠ Production deployment — proceed with caution</div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div><Label>Product *</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.product_id || ''} onChange={e => setForm((f: any) => ({ ...f, product_id: e.target.value }))}><option value="">Select…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div><Label>Product *</Label><div className="mt-1"><SearchableSelect options={deployProductOptions} value={form.product_id || ''} onValueChange={(v) => setForm((f: any) => ({ ...f, product_id: v }))} placeholder="Select…" searchPlaceholder="Search products…" contentWidth="wide" /></div></div>
         <div><Label>Version *</Label><Input className="font-mono" value={form.version || ''} onChange={e => setForm((f: any) => ({ ...f, version: e.target.value }))} placeholder="2.1.0" /></div>
-        <div><Label>Deploy Type</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.deploy_type} onChange={e => setForm((f: any) => ({ ...f, deploy_type: e.target.value }))}>{['full', 'hotfix', 'rollback', 'config_only', 'migration_only'].map(o => <option key={o}>{o}</option>)}</select></div>
+        <div><Label>Deploy Type</Label><div className="mt-1"><SearchableSelect options={deployTypeOptions} value={form.deploy_type} onValueChange={(v) => setForm((f: any) => ({ ...f, deploy_type: v }))} searchPlaceholder="Search deploy type…" /></div></div>
         <div><Label>Branch</Label><Input className="font-mono" value={form.branch || ''} onChange={e => setForm((f: any) => ({ ...f, branch: e.target.value }))} placeholder="release/2.1.0" /></div>
         <div><Label>Commit SHA</Label><Input className="font-mono" value={form.commit_sha || ''} onChange={e => setForm((f: any) => ({ ...f, commit_sha: e.target.value }))} /></div>
         <div><Label>Rollback Version</Label><Input className="font-mono" value={form.rollback_version || ''} onChange={e => setForm((f: any) => ({ ...f, rollback_version: e.target.value }))} placeholder="Previous version" /></div>
@@ -165,8 +184,8 @@ export default function DeploymentsPanel() {
           </h3>
           <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <ListPageSearchInput value={search} onChange={setSearch} className="w-full min-w-0 sm:w-44" />
-            <select className="w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm sm:w-auto" value={envF} onChange={e => { setPage(1); setEnvF(e.target.value); }}><option value="">All Environments</option>{['development', 'staging', 'production'].map(o => <option key={o}>{o}</option>)}</select>
-            <select className="w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm sm:w-auto" value={statusF} onChange={e => { setPage(1); setStatusF(e.target.value); }}><option value="">All Statuses</option>{['pending', 'building', 'testing', 'deploying', 'success', 'failed', 'rolled_back'].map(o => <option key={o}>{o}</option>)}</select>
+            <SearchableSelect className="w-full min-w-0 sm:w-[11rem]" size="sm" triggerClassName="w-full" options={envFilterOptions} value={envF} onValueChange={(v) => { setPage(1); setEnvF(v); }} placeholder="All Environments" searchPlaceholder="Search environment…" />
+            <SearchableSelect className="w-full min-w-0 sm:w-[11rem]" size="sm" triggerClassName="w-full" options={deployStatusFilterOptions} value={statusF} onValueChange={(v) => { setPage(1); setStatusF(v); }} placeholder="All Statuses" searchPlaceholder="Search status…" />
             {can('deploy') && <Button className="w-full shrink-0 sm:w-auto" onClick={() => setForm({ ...blank })}>+ New Deployment</Button>}
           </div>
         </div>

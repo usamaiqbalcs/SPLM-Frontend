@@ -20,9 +20,12 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/contexts/AuthContext';
 import AppLayout from '@/components/AppLayout';
 import LoginPage from '@/pages/LoginPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import NotFound from '@/pages/NotFound';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { RequirePermission } from '@/components/RequirePermission';
 import { LoadingSkeleton } from '@/components/ui/loading-skeleton';
+import { routeSegmentRequiresPermission } from '@/constants/splm-route-access';
 
 // ── Lazy panel imports ────────────────────────────────────────────────────────
 // Vite + SWC will create a separate chunk per panel.
@@ -53,11 +56,27 @@ const PromptLibraryPanel     = lazy(() => import('@/components/panels/PromptLibr
 const KPIDashboardPanel      = lazy(() => import('@/components/panels/KPIDashboardPanel'));
 const CanaryDeploymentPanel  = lazy(() => import('@/components/panels/CanaryDeploymentPanel'));
 const GlobalSearchPage        = lazy(() => import('@/pages/GlobalSearchPage'));
+const AuditLogsPanel          = lazy(() => import('@/components/panels/AuditLogsPanel'));
+const AdminUsersPanel         = lazy(() => import('@/components/panels/AdminUsersPanel'));
 
 /** Wraps each lazy panel in a Suspense boundary with a skeleton fallback. */
 const Panel = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<LoadingSkeleton />}>{children}</Suspense>
 );
+
+/** Enforces the same permission as the sidebar for this URL segment (deep-link safe). */
+function PanelRoute({
+  segment,
+  children,
+}: {
+  segment: string;
+  children: React.ReactNode;
+}) {
+  const perm = routeSegmentRequiresPermission[segment];
+  const inner = <Panel>{children}</Panel>;
+  if (!perm) return inner;
+  return <RequirePermission permission={perm}>{inner}</RequirePermission>;
+}
 
 const App = () => (
   <AuthProvider>
@@ -68,6 +87,7 @@ const App = () => (
         <Routes>
           {/* Public route */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* Protected shell — all in-app routes live under AppLayout */}
           <Route element={<ProtectedRoute />}>
@@ -78,29 +98,31 @@ const App = () => (
               {/* ── Core SPLM routes ───────────────────────────────────── */}
               <Route path="dashboard"    element={<Panel><DashboardPanel /></Panel>} />
               <Route path="queue"        element={<Panel><MyQueuePanel /></Panel>} />
-              <Route path="products"     element={<Panel><ProductsPanel /></Panel>} />
-              <Route path="tasks"        element={<Panel><TasksPanel /></Panel>} />
-              <Route path="sprints"      element={<Panel><SprintsPanel /></Panel>} />
+              <Route path="products"     element={<PanelRoute segment="products"><ProductsPanel /></PanelRoute>} />
+              <Route path="tasks"        element={<PanelRoute segment="tasks"><TasksPanel /></PanelRoute>} />
+              <Route path="sprints"      element={<PanelRoute segment="sprints"><SprintsPanel /></PanelRoute>} />
               <Route path="versions"     element={<Panel><VersionControlPanel /></Panel>} />
               <Route path="feedback"     element={<Panel><FeedbackPanel /></Panel>} />
-              <Route path="research"     element={<Panel><ResearchPanel /></Panel>} />
+              <Route path="research"     element={<PanelRoute segment="research"><ResearchPanel /></PanelRoute>} />
               <Route path="wiki"         element={<Panel><WikiPanel /></Panel>} />
               <Route path="deployments"  element={<Panel><DeploymentsPanel /></Panel>} />
-              <Route path="environments" element={<Panel><EnvironmentsPanel /></Panel>} />
+              <Route path="environments" element={<PanelRoute segment="environments"><EnvironmentsPanel /></PanelRoute>} />
               <Route path="releases"     element={<Panel><ReleasesPanel /></Panel>} />
-              <Route path="team"         element={<Panel><DevelopersPanel /></Panel>} />
+              <Route path="team"         element={<PanelRoute segment="team"><DevelopersPanel /></PanelRoute>} />
+              <Route path="audit-logs"   element={<PanelRoute segment="audit-logs"><AuditLogsPanel /></PanelRoute>} />
+              <Route path="user-management" element={<PanelRoute segment="user-management"><AdminUsersPanel /></PanelRoute>} />
 
               {/* ── AI-SDLC Pipeline routes ────────────────────────────── */}
-              <Route path="ai-overview"    element={<Panel><AiSdlcOverviewPanel /></Panel>} />
-              <Route path="workflow"       element={<Panel><WorkflowPipelinePanel /></Panel>} />
-              <Route path="qa-cycles"      element={<Panel><QACyclesPanel /></Panel>} />
-              <Route path="ai-analyzer"    element={<Panel><AIAnalyzerPanel /></Panel>} />
-              <Route path="fix-review"     element={<Panel><FixReviewPanel /></Panel>} />
-              <Route path="pm-signoff"     element={<Panel><PMSignOffPanel /></Panel>} />
-              <Route path="pdm-acceptance" element={<Panel><PDMAcceptancePanel /></Panel>} />
-              <Route path="prompts"        element={<Panel><PromptLibraryPanel /></Panel>} />
+              <Route path="ai-overview"    element={<PanelRoute segment="ai-overview"><AiSdlcOverviewPanel /></PanelRoute>} />
+              <Route path="workflow"       element={<PanelRoute segment="workflow"><WorkflowPipelinePanel /></PanelRoute>} />
+              <Route path="qa-cycles"      element={<PanelRoute segment="qa-cycles"><QACyclesPanel /></PanelRoute>} />
+              <Route path="ai-analyzer"    element={<PanelRoute segment="ai-analyzer"><AIAnalyzerPanel /></PanelRoute>} />
+              <Route path="fix-review"     element={<PanelRoute segment="fix-review"><FixReviewPanel /></PanelRoute>} />
+              <Route path="pm-signoff"     element={<PanelRoute segment="pm-signoff"><PMSignOffPanel /></PanelRoute>} />
+              <Route path="pdm-acceptance" element={<PanelRoute segment="pdm-acceptance"><PDMAcceptancePanel /></PanelRoute>} />
+              <Route path="prompts"        element={<PanelRoute segment="prompts"><PromptLibraryPanel /></PanelRoute>} />
               <Route path="kpi"            element={<Panel><KPIDashboardPanel /></Panel>} />
-              <Route path="canary"         element={<Panel><CanaryDeploymentPanel /></Panel>} />
+              <Route path="canary"         element={<PanelRoute segment="canary"><CanaryDeploymentPanel /></PanelRoute>} />
               <Route path="search"         element={<Panel><GlobalSearchPage /></Panel>} />
             </Route>
           </Route>

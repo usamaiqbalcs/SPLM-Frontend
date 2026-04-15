@@ -182,8 +182,31 @@ export const deleteTask = (id: string) => tasksApi.delete(id);
 
 // ── Developers ────────────────────────────────────────────────────────────────
 
-export const listDevelopers = (opts?: { page?: number; pageSize?: number; search?: string }) =>
-  developersApi.getPage({ page: opts?.page ?? 1, pageSize: Math.min(opts?.pageSize ?? 100, 100), search: opts?.search }).then((r) => r.items);
+/** Max page size accepted by `/developers` (must match backend clamp). */
+const DEVELOPER_LIST_CHUNK = 500;
+
+/** Full roster for dropdowns: fetches every page until `total_count` is reached. */
+export const listDevelopers = async (opts?: { page?: number; pageSize?: number; search?: string }) => {
+  const search = opts?.search;
+  const chunk = Math.min(opts?.pageSize ?? DEVELOPER_LIST_CHUNK, DEVELOPER_LIST_CHUNK);
+  const all: any[] = [];
+  let page = 1;
+  for (let guard = 0; guard < 50; guard++) {
+    const r = await developersApi.getPage({
+      page,
+      pageSize: chunk,
+      search,
+      sortBy: 'name',
+      sortDir: 'asc',
+    });
+    const items = r.items ?? [];
+    all.push(...items);
+    const total = Number((r as { total_count?: number }).total_count ?? 0);
+    if (items.length === 0 || all.length >= total) break;
+    page++;
+  }
+  return all;
+};
 
 export const listDevelopersPage = (opts?: { page?: number; pageSize?: number; search?: string; sortBy?: string; sortDir?: 'asc' | 'desc' }) =>
   developersApi.getPage({ page: 1, pageSize: 10, ...opts });

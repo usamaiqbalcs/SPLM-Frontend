@@ -1,18 +1,23 @@
 /**
- * AuthContext.tsx — .NET JWT Authentication
+ * AuthContext.tsx — .NET JWT + refresh rotation
  *
- * Replaces Supabase Auth completely.  All auth calls hit the
- * ZenaTech SPLM .NET backend (/api/v1/auth/…).
- *
- * Token storage: localStorage under key 'zenatech_jwt'.
- * The `user` and `profile` shapes are kept compatible with what
- * existing components expect so no component edits are required.
+ * Short-lived access token + opaque refresh token (see `token-lifecycle.ts`).
+ * Role/permissions follow DB hydration; `refreshProfile()` syncs `/auth/me` for UX.
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { normalizeRole, roleHasPermission, SplmRoles } from '@/constants/splm-rbac';
+import {
+  clearAllAuthTokens,
+  getAccessToken,
+  looksLikeAccessJwt,
+  msUntilJwtExpiry,
+  saveAccessToken,
+  saveRefreshToken,
+  tryRefreshAccessToken,
+} from '@/lib/token-lifecycle';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
-const TOKEN_KEY = 'zenatech_jwt';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -33,42 +38,40 @@ interface UserProfile {
   active: boolean;
 }
 
+interface MeResponse {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+}
+
+interface AuthTokensJson {
+  /** OAuth2-style field from API (preferred). */
+  access_token?: string;
+  /** Legacy alias if present. */
+  token?: string;
+  refresh_token?: string;
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
 interface AuthContextType {
-  /** Current authenticated user (null when logged out). */
   user: NetUser | null;
-  /** Compatibility shim — exposes access_token for code that reads session.access_token. */
   session: { access_token: string } | null;
   profile: UserProfile | null;
   userRole: string;
+  normalizedRole: string;
+  isAdmin: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
   can: (permission: string) => boolean;
+  refreshProfile: () => Promise<void>;
 }
-
-// ── RBAC ───────────────────────────────────────────────────────────────────────
-
-const ROLES: Record<string, string[]> = {
-  admin:     ['read', 'edit', 'config', 'users', 'reports', 'assign', 'override', 'deploy', 'release'],
-  manager:   ['read', 'edit', 'reports', 'assign', 'override', 'deploy', 'release'],
-  developer: ['read', 'reports', 'deploy'],
-  viewer:    ['read'],
-};
-
-// ── Token helpers ─────────────────────────────────────────────────────────────
-
-function getToken(): string | null {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-function saveToken(t: string): void {
-  try { localStorage.setItem(TOKEN_KEY, t); } catch {}
-}
-function clearToken(): void {
-  try { localStorage.removeItem(TOKEN_KEY); } catch {}
-}
-
-// ── API helper ────────────────────────────────────────────────────────────────
 
 async function authFetch<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers: Record<string, string> = {
@@ -92,75 +95,257 @@ async function authFetch<T>(path: string, init: RequestInit = {}, token?: string
   return res.json() as Promise<T>;
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
+async function fetchMe(token: string): Promise<MeResponse> {
+  const trimmed = token.trim();
+  const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${trimmed}`, Accept: 'application/json' },
+  });
+  if (res.status === 401 || res.status === 403) {
+    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const fromErrors =
+      Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
+    const detail =
+      (typeof body?.detail === 'string' && body.detail.trim()) ||
+      (typeof body?.title === 'string' && body.title.trim()) ||
+      fromErrors ||
+      (res.status === 403 ? 'Forbidden' : 'Unauthorized');
+    const err = new Error(detail);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const fromErrors =
+      Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
+    const msg =
+      (body?.detail as string | undefined) ||
+      (body?.message as string | undefined) ||
+      fromErrors ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return res.json() as Promise<MeResponse>;
+}
+
+async function fetchMeWithOptionalRefresh(token: string): Promise<MeResponse> {
+  try {
+    return await fetchMe(token);
+  } catch (e) {
+    const st = (e as Error & { status?: number }).status;
+    if (st === 401 && (await tryRefreshAccessToken())) {
+      const t2 = getAccessToken();
+      if (t2) return await fetchMe(t2);
+    }
+    throw e;
+  }
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<NetUser | null>(null);
+  const [user, setUser] = useState<NetUser | null>(null);
   const [session, setSession] = useState<{ access_token: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  /** Apply a successful auth response to all state slices. */
-  const applyAuth = (token: string, userId: string, email: string, name: string, role: string) => {
-    const netUser: NetUser = { id: userId, email, name, role };
-    const userProfile: UserProfile = { id: userId, user_id: userId, name, email, role, active: true };
-    setUser(netUser);
-    setSession({ access_token: token });
-    setProfile(userProfile);
-    saveToken(token);
-  };
-
-  // ── Restore session on mount ─────────────────────────────────────────────────
-  useEffect(() => {
-    const token = getToken();
-    if (!token) { setLoading(false); return; }
-
-    authFetch<{ user_id: string; name: string; email: string; role: string; active: boolean }>(
-      '/auth/me', {}, token,
-    )
-      .then(me => applyAuth(token, me.user_id, me.email, me.name, me.role))
-      .catch(() => clearToken())
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const userRole = profile?.role ?? 'viewer';
-  const can = (permission: string) => ROLES[userRole]?.includes(permission) ?? false;
-
-  // ── Sign in ──────────────────────────────────────────────────────────────────
-  const signIn = async (email: string, password: string) => {
-    const data = await authFetch<{
-      token: string; user_id: string; email: string; name: string; role: string;
-    }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    applyAuth(data.token, data.user_id, data.email, data.name, data.role);
-  };
-
-  // ── Sign up — creates auth.users + dbo.profiles (role viewer), returns JWT ───
-  const signUp = async (email: string, password: string, name: string) => {
-    const data = await authFetch<{
-      token: string; user_id: string; email: string; name: string; role: string;
-    }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
-    });
-    applyAuth(data.token, data.user_id, data.email, data.name, data.role);
-  };
-
-  // ── Sign out ─────────────────────────────────────────────────────────────────
-  const signOut = async () => {
-    clearToken();
+  const clearSession = useCallback(() => {
+    clearAllAuthTokens();
     setUser(null);
     setSession(null);
     setProfile(null);
+  }, []);
+
+  const applyAuth = useCallback(
+    (token: string, userId: string, email: string, name: string, role: string, active: boolean) => {
+      const nr = normalizeRole(role);
+      const netUser: NetUser = { id: userId, email, name, role: nr };
+      const userProfile: UserProfile = {
+        id: userId,
+        user_id: userId,
+        name,
+        email,
+        role: nr,
+        active,
+      };
+      setUser(netUser);
+      setSession({ access_token: token });
+      setProfile(userProfile);
+      saveAccessToken(token);
+    },
+    [],
+  );
+
+  const refreshProfile = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const me = await fetchMeWithOptionalRefresh(token);
+      if (!me.active) {
+        clearSession();
+        return;
+      }
+      const latest = getAccessToken() ?? token;
+      applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+    } catch (e) {
+      const st = (e as Error & { status?: number }).status;
+      if (st === 401 || st === 403) clearSession();
+    }
+  }, [applyAuth, clearSession]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    fetchMeWithOptionalRefresh(token)
+      .then(me => {
+        if (getAccessToken() !== token) return;
+        if (!me.active) {
+          clearSession();
+          return;
+        }
+        const latest = getAccessToken() ?? token;
+        applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+      })
+      .catch(() => {
+        // Avoid wiping a fresh login: an in-flight /me for an old token can finish
+        // after signIn() has already stored a new JWT.
+        const now = getAccessToken();
+        if (now === token || now === null) clearSession();
+      })
+      .finally(() => setLoading(false));
+  }, [applyAuth, clearSession]);
+
+  useEffect(() => {
+    if (!user) return;
+    const onFocus = () => {
+      void refreshProfile();
+    };
+    window.addEventListener('focus', onFocus);
+    const tid = window.setInterval(() => {
+      void refreshProfile();
+    }, 5 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(tid);
+    };
+  }, [user, refreshProfile]);
+
+  /** Proactively rotate access token before expiry (single-shot timer per mount). */
+  useEffect(() => {
+    if (!user) return;
+    const token = getAccessToken();
+    const ms = msUntilJwtExpiry(token, 75);
+    if (ms == null || ms < 2000) return;
+    const tid = window.setTimeout(async () => {
+      if (await tryRefreshAccessToken()) {
+        const nt = getAccessToken();
+        if (nt) setSession({ access_token: nt });
+      }
+    }, ms);
+    return () => window.clearTimeout(tid);
+  }, [user, session?.access_token]);
+
+  const userRole = profile?.role ?? SplmRoles.Viewer;
+  const normalizedRole = normalizeRole(userRole);
+  const isAdmin = normalizedRole === SplmRoles.Admin;
+  const can = useCallback((permission: string) => roleHasPermission(userRole, permission), [userRole]);
+
+  const signIn = async (email: string, password: string) => {
+    const data = await authFetch<AuthTokensJson>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    const raw = data as AuthTokensJson & { Token?: string };
+    const accessToken = (raw.access_token ?? raw.token ?? raw.Token)?.trim();
+    if (!accessToken) {
+      throw new Error('Login succeeded but the server did not return an access token.');
+    }
+    if (!looksLikeAccessJwt(accessToken)) {
+      throw new Error('Login returned a non-JWT access token. Clear site data and sign in again, or contact support.');
+    }
+    if (raw.refresh_token) saveRefreshToken(raw.refresh_token);
+    saveAccessToken(accessToken);
+
+    let me: MeResponse;
+    try {
+      me = await fetchMeWithOptionalRefresh(accessToken);
+    } catch (e) {
+      clearSession();
+      throw e;
+    }
+    if (!me.active) {
+      clearSession();
+      throw new Error('This account is disabled.');
+    }
+    const latest = getAccessToken() ?? accessToken;
+    applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+  };
+
+  const signUp = async (email: string, password: string, name: string) => {
+    const data = await authFetch<AuthTokensJson>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    });
+    const raw = data as AuthTokensJson & { Token?: string };
+    const accessToken = (raw.access_token ?? raw.token ?? raw.Token)?.trim();
+    if (!accessToken) {
+      throw new Error('Registration succeeded but the server did not return an access token.');
+    }
+    if (!looksLikeAccessJwt(accessToken)) {
+      throw new Error('Registration returned a non-JWT access token. Clear site data and try again, or contact support.');
+    }
+    if (raw.refresh_token) saveRefreshToken(raw.refresh_token);
+    saveAccessToken(accessToken);
+
+    let me: MeResponse;
+    try {
+      me = await fetchMeWithOptionalRefresh(accessToken);
+    } catch (e) {
+      clearSession();
+      throw e;
+    }
+    if (!me.active) {
+      clearSession();
+      throw new Error('This account is disabled.');
+    }
+    const latest = getAccessToken() ?? accessToken;
+    applyAuth(latest, me.user_id, me.email, me.name, me.role, me.active);
+  };
+
+  const signOut = async () => {
+    const t = getAccessToken();
+    if (t) {
+      try {
+        await fetch(`${API_BASE}/api/v1/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${t}`, Accept: 'application/json' },
+        });
+      } catch {
+        /* ignore network errors */
+      }
+    }
+    clearSession();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, userRole, loading, signIn, signUp, signOut, can }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        profile,
+        userRole,
+        normalizedRole,
+        isAdmin,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        can,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

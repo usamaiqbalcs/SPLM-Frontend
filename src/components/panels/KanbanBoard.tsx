@@ -59,18 +59,26 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
 
   const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
+  /** Map terminal / non-lane statuses into the Done column so every task appears in one of the five lanes. */
+  const laneStatus = (t: any): string => {
+    const s = (t.status || 'backlog') as string;
+    if (s === 'cancelled' || s === 'done') return 'done';
+    return s;
+  };
+
   return (
-    <div className="-mx-1 flex min-h-[min(500px,70dvh)] gap-3 overflow-x-auto overscroll-x-contain px-1 pb-4 scrollbar-thin sm:mx-0 sm:px-0">
+    <div className="-mx-1 flex min-h-[min(500px,70dvh)] gap-3 overflow-x-auto overscroll-x-contain px-1 pb-4 scrollbar-thin sm:mx-0 sm:px-0 lg:overflow-x-visible lg:pb-2">
       {COLUMNS.map(col => {
         const colTasks = tasks
-          .filter(t => (t.status || 'backlog') === col.id)
+          .filter(t => laneStatus(t) === col.id)
           .sort((a, b) => (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2));
 
         return (
           <div
             key={col.id}
             className={cn(
-              'flex w-[min(260px,calc(100vw-2.5rem))] flex-shrink-0 flex-col rounded-lg border bg-muted/30 transition-colors sm:w-[260px]',
+              'flex w-[min(240px,calc(100vw-2.5rem))] flex-shrink-0 flex-col rounded-lg border bg-muted/30 transition-colors sm:w-[240px]',
+              'lg:w-0 lg:min-w-0 lg:flex-1 lg:max-w-none',
               dragOver === col.id && 'border-primary bg-primary/5'
             )}
             onDragOver={(e) => handleDragOver(e, col.id)}
@@ -102,9 +110,12 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
                   )}
                 >
                   <div className="flex items-start justify-between gap-1 mb-1.5">
-                    <span className="text-xs font-semibold text-foreground leading-tight line-clamp-2 flex-1">{t.title}</span>
+                    <span className={cn('text-xs font-semibold text-foreground leading-tight line-clamp-2 flex-1', t.status === 'cancelled' && 'line-through opacity-70')}>{t.title}</span>
                     <StatusBadge status={t.priority} size="sm" />
                   </div>
+                  {t.status === 'cancelled' && (
+                    <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Cancelled</span>
+                  )}
                   <div className="text-[10px] text-muted-foreground mb-2">{pname(t.product_id)}</div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">

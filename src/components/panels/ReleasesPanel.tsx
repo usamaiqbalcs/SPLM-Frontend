@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { fmtDate } from '@/lib/splm-utils';
+import { fmtDate, toHtmlDateInputValue } from '@/lib/splm-utils';
+import { DateField } from '@/components/ui/date-field';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
+import { SearchableProductMultiSelect } from '@/components/forms/SearchableProductMultiSelect';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { PackageCheck, CalendarDays, CheckSquare, Clock, XCircle } from 'lucide-react';
 
 const STATUS_FLOW = ['planned', 'in_progress', 'staging', 'released', 'cancelled'] as const;
@@ -124,6 +127,21 @@ export default function ReleasesPanel() {
     setForm((f: any) => ({ ...f, checklist: lines.join('\n') }));
   };
 
+  /** Mark every `[ ]` / `[x]` checklist line as checked or unchecked. */
+  const setAllChecklistChecked = (checked: boolean) => {
+    setForm((f: any) => {
+      const lines = (f.checklist || '').split('\n');
+      const next = lines.map((line: string) => {
+        if (/^\[[ x]\]\s*/.test(line)) {
+          const body = line.replace(/^\[[ x]\]\s*/, '');
+          return (checked ? '[x] ' : '[ ] ') + body;
+        }
+        return line;
+      });
+      return { ...f, checklist: next.join('\n') };
+    });
+  };
+
   const getProgress = (checklist: string) => {
     const lines = (checklist || '').split('\n').filter(l => l.startsWith('['));
     const done = lines.filter(l => l.startsWith('[x]')).length;
@@ -137,6 +155,15 @@ export default function ReleasesPanel() {
     released: serverStats.released,
     cancelled: serverStats.cancelled,
   }), [serverStats]);
+
+  const releaseTypeOptions = useMemo(
+    () => TYPE_OPTIONS.map((o) => ({ value: o, label: o.replace(/_/g, ' ') })),
+    [],
+  );
+  const releaseStatusFormOptions = useMemo(
+    () => STATUS_FLOW.map((o) => ({ value: o, label: o.replace(/_/g, ' ') })),
+    [],
+  );
 
   // ── Form view ──────────────────────────────────────────────────────────────
   if (form) return (
@@ -157,73 +184,62 @@ export default function ReleasesPanel() {
         </div>
         <div>
           <Label>Type</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.type}
-            onChange={e => setForm((f: any) => ({ ...f, type: e.target.value }))}
-          >
-            {TYPE_OPTIONS.map(o => (
-              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <SearchableSelect options={releaseTypeOptions} value={form.type} onValueChange={(v) => setForm((f: any) => ({ ...f, type: v }))} searchPlaceholder="Search type…" />
+          </div>
         </div>
         <div>
           <Label>Status</Label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-            value={form.status}
-            onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}
-          >
-            {STATUS_FLOW.map(o => (
-              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label>Target Date</Label>
-          <Input
-            type="date"
-            className="mt-1"
-            value={form.target_date || ''}
-            onChange={e => setForm((f: any) => ({ ...f, target_date: e.target.value }))}
-          />
-        </div>
-
-        {/* Product multi-select */}
-        <div className="md:col-span-2">
-          <Label>Products Included</Label>
-          <div className="mt-1 flex flex-wrap gap-2 p-2 border rounded-md bg-background min-h-[44px]">
-            {products.map(p => {
-              const ids: string[] = (form.products_included || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-              const checked = ids.includes(p.id);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    const next = checked ? ids.filter(id => id !== p.id) : [...ids, p.id];
-                    setForm((f: any) => ({ ...f, products_included: next.join(',') }));
-                  }}
-                  className={cn(
-                    'px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer',
-                    checked ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:border-primary/50'
-                  )}
-                >
-                  {p.name}
-                </button>
-              );
-            })}
-            {products.length === 0 && <span className="text-xs text-muted-foreground py-1">No products available</span>}
+          <div className="mt-1">
+            <SearchableSelect options={releaseStatusFormOptions} value={form.status} onValueChange={(v) => setForm((f: any) => ({ ...f, status: v }))} searchPlaceholder="Search status…" />
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Click to select which products are included in this release</p>
         </div>
+        <DateField
+          className="mt-1"
+          label="Target Date"
+          value={toHtmlDateInputValue(form.target_date)}
+          onChange={(v) => setForm((f: any) => ({ ...f, target_date: v }))}
+          helperText="Optional release target day."
+        />
+
+        <SearchableProductMultiSelect
+          label="Products Included"
+          products={products}
+          value={form.products_included || ''}
+          onChange={(csv) => setForm((f: any) => ({ ...f, products_included: csv }))}
+          helpText="Search and select one or more products included in this release."
+        />
       </div>
 
       {/* Checklist */}
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <Label>Release Checklist</Label>
-          <span className="text-xs text-muted-foreground font-semibold">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <Label className="mb-0">Release Checklist</Label>
+            {getProgress(form.checklist).total > 0 && (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setAllChecklistChecked(true)}
+                >
+                  Select all
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setAllChecklistChecked(false)}
+                >
+                  Clear all
+                </Button>
+              </div>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground font-semibold shrink-0">
             {getProgress(form.checklist).done}/{getProgress(form.checklist).total} · {getProgress(form.checklist).pct}%
           </span>
         </div>
@@ -369,7 +385,15 @@ export default function ReleasesPanel() {
                         </div>
                       </div>
                       <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                        {can('release') && <Button size="sm" variant="outline" onClick={() => setForm(r)}>Edit</Button>}
+                        {can('release') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setForm({ ...r, target_date: toHtmlDateInputValue(r.target_date) })}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         {can('release') && <Button size="sm" variant="destructive" onClick={() => setDeleteId(r.id)}>Delete</Button>}
                       </div>
                     </div>

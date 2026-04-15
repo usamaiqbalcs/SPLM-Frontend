@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { fmtDate } from '@/lib/splm-utils';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -146,6 +147,23 @@ export default function QACyclesPanel() {
   useEffect(() => {
     load();
   }, []);
+
+  const qaCreateProductOptions = useMemo(
+    () => [{ value: '', label: 'Select a product…' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const qaIssueSeverityOptions = useMemo(
+    () => Object.entries(SEVERITY_CONFIG).map(([key, config]) => ({ value: key, label: config.label })),
+    [],
+  );
+  const qaIssueConfidenceOptions = useMemo(
+    () => [
+      { value: 'high', label: 'High' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'low', label: 'Low' },
+    ],
+    [],
+  );
 
   const loadIssuesForCycle = async (cycleId: string) => {
     setIssueLoading((prev) => ({ ...prev, [cycleId]: true }));
@@ -284,21 +302,15 @@ export default function QACyclesPanel() {
               <Label htmlFor="product-select" className="text-sm font-medium mb-1 block">
                 Product *
               </Label>
-              <select
+              <SearchableSelect
                 id="product-select"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                options={qaCreateProductOptions}
                 value={newCycleForm.product_id}
-                onChange={(e) =>
-                  setNewCycleForm((f) => ({ ...f, product_id: e.target.value }))
-                }
-              >
-                <option value="">Select a product…</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(v) => setNewCycleForm((f) => ({ ...f, product_id: v }))}
+                placeholder="Select a product…"
+                searchPlaceholder="Search products…"
+                contentWidth="wide"
+              />
             </div>
             <div>
               <Label htmlFor="version-input" className="text-sm font-medium mb-1 block">
@@ -394,36 +406,26 @@ export default function QACyclesPanel() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <Label className="text-sm font-medium mb-1 block">Severity</Label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                <SearchableSelect
+                  options={qaIssueSeverityOptions}
                   value={newIssueForm.severity}
-                  onChange={(e) =>
-                    setNewIssueForm((f) => ({ ...f, severity: e.target.value }))
-                  }
-                >
-                  {Object.entries(SEVERITY_CONFIG).map(([key, config]) => (
-                    <option key={key} value={key}>
-                      {config.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(v) => setNewIssueForm((f) => ({ ...f, severity: v }))}
+                  searchPlaceholder="Search severity…"
+                />
               </div>
               <div>
                 <Label className="text-sm font-medium mb-1 block">Confidence</Label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                <SearchableSelect
+                  options={qaIssueConfidenceOptions}
                   value={newIssueForm.confidence_rating}
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     setNewIssueForm((f) => ({
                       ...f,
-                      confidence_rating: e.target.value,
+                      confidence_rating: v,
                     }))
                   }
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
+                  searchPlaceholder="Search confidence…"
+                />
               </div>
               <div>
                 <Label className="text-sm font-medium mb-1 block">AI Model</Label>

@@ -7,6 +7,7 @@ import { fmtDate } from '@/lib/splm-utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import TaskDetailDrawer from '@/components/panels/TaskDetailDrawer';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import {
   Clock, CheckCircle2, AlertTriangle, Zap, Package,
   CalendarDays, ListChecks, ChevronDown, ChevronRight,
@@ -37,6 +38,11 @@ const dateLabel = (due: string | null) => {
 };
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+const QUEUE_STATUS_SELECT_OPTIONS = ['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map((o) => ({
+  value: o,
+  label: o.replace(/_/g, ' '),
+}));
 
 const sortByPriority = (a: Task, b: Task) =>
   (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2);
@@ -84,16 +90,21 @@ function TaskCard({
             {task.title}
           </span>
 
-          <select
-            className="border rounded text-xs px-2 py-1 bg-background flex-shrink-0 ml-2 cursor-pointer"
-            value={task.status}
+          <div
             onClick={e => e.stopPropagation()}
-            onChange={e => { e.stopPropagation(); onStatusChange(task.id, e.target.value); }}
+            onPointerDown={e => e.stopPropagation()}
+            className="min-w-[8.5rem] max-w-[10rem] flex-shrink-0 ml-2"
           >
-            {['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => (
-              <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
+            <SearchableSelect
+              size="xs"
+              triggerClassName="h-7 text-xs px-2"
+              options={QUEUE_STATUS_SELECT_OPTIONS}
+              value={task.status}
+              onValueChange={(v) => onStatusChange(task.id, v)}
+              searchPlaceholder="Status…"
+              aria-label="Change task status"
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">

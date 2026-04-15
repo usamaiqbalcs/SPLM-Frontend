@@ -12,14 +12,14 @@ import {
   Microscope, GitBranch, Rocket, Globe, CalendarCheck, LogOut, ChevronDown,
   Bell, HelpCircle, Moon, Sun, Clock, PanelLeftClose, PanelLeft, Gauge, BookOpen,
   GitMerge, FlaskConical, Bot, ClipboardCheck, BadgeCheck, Library, BarChart3,
-  Menu, Activity,
+  Menu, Activity, ScrollText, UserCog,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useSessionTimer } from '@/hooks/useSessionTimer';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
-type NavItem = { id: string; label: string; icon: any; permission?: string };
+type NavItem = { id: string; label: string; icon: any; permission?: string; adminOnly?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navGroups: NavGroup[] = [
@@ -83,7 +83,9 @@ const navGroups: NavGroup[] = [
   {
     label: 'Administration',
     items: [
-      { id: 'team', label: 'Team', icon: Users, permission: 'edit' },
+      { id: 'team', label: 'Team', icon: Users, permission: 'users' },
+      { id: 'user-management', label: 'Users & roles', icon: UserCog, permission: 'identity.manage' },
+      { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText, permission: 'audit.read' },
     ],
   },
 ];
@@ -102,6 +104,8 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   environments:   { title: 'Environments',       subtitle: 'Server configuration' },
   releases:       { title: 'Releases',           subtitle: 'Release planning & checklists' },
   team:           { title: 'Team',               subtitle: 'Developer management' },
+  'audit-logs':   { title: 'Audit Logs',         subtitle: 'Admin activity trail across modules' },
+  'user-management': { title: 'User management', subtitle: 'Accounts, app roles (profiles.role), and activation' },
   // AI-SDLC
   'ai-overview':  { title: 'AI-SDLC Overview',   subtitle: 'Unified pipeline health, QA, analyzer activity, and KPI trend' },
   workflow:       { title: 'Workflow Pipeline',  subtitle: 'PM Build → Dev Handoff → QA Cycle → Acceptance → Production' },
@@ -139,7 +143,7 @@ function CollapsibleGroup({
 }
 
 export default function AppLayout() {
-  const { profile, signOut, can, userRole } = useAuth();
+  const { profile, signOut, can, userRole, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => pathToTab(location.pathname));
@@ -148,6 +152,7 @@ export default function AppLayout() {
 
   // Modal states
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationUnread, setNotificationUnread] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -186,6 +191,7 @@ export default function AppLayout() {
   };
 
   const canSeeItem = (item: NavItem) => {
+    if (item.adminOnly && !isAdmin) return false;
     if (!item.permission) return true;
     return can(item.permission);
   };
@@ -453,6 +459,7 @@ export default function AppLayout() {
         <NotificationsPanel
           open={notificationsOpen}
           onClose={() => setNotificationsOpen(false)}
+          onUnreadCount={setNotificationUnread}
           onNavigate={(tab) => {
             navigate(`/${tabToRouteSegment(tab)}`);
             setNotificationsOpen(false);
@@ -486,7 +493,9 @@ export default function AppLayout() {
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
+            {notificationUnread > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" aria-hidden />
+            )}
           </button>
 
           {/* Dark mode toggle */}

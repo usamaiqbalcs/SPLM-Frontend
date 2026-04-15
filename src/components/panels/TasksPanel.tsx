@@ -1,22 +1,28 @@
-import { useEffect, useState } from 'react';
-import { listTasksPage, saveTask, deleteTask, listProductsPage, listDevelopersPage, updateTaskStatus } from '@/lib/api';
+import { useEffect, useState, useMemo } from 'react';
+import { listTasksPage, saveTask, deleteTask, listProductsPage, listDevelopers, updateTaskStatus } from '@/lib/api';
 import { listSprints } from '@/lib/api-sprints';
-import { DEFAULT_LIST_PAGE_SIZE, ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { DEFAULT_LIST_PAGE_SIZE, ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fmtDate } from '@/lib/splm-utils';
+import { fmtDate, toHtmlDateInputValue } from '@/lib/splm-utils';
+import { DateField } from '@/components/ui/date-field';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { toast } from 'sonner';
 import { LayoutGrid, List } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import KanbanBoard from '@/components/panels/KanbanBoard';
 import TaskDetailDrawer from '@/components/panels/TaskDetailDrawer';
+import { SearchableSelect, optionsFromStrings } from '@/components/forms/SearchableSelect';
 
-/** Board loads one large page so columns are useful; list view stays at DEFAULT_LIST_PAGE_SIZE. */
-const KANBAN_TASK_FETCH_SIZE = 200;
+/** Board uses a larger page than list so each swimlane has enough cards; both views paginate server-side. */
+const BOARD_PAGE_SIZE = 50;
+
+const TASK_STATUSES = ['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'] as const;
+const TASK_TYPES = ['bug_fix', 'feature', 'api_update', 'security', 'research', 'maintenance'] as const;
+const TASK_PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
 
 export default function TasksPanel() {
   const { can } = useAuth();
@@ -30,6 +36,7 @@ export default function TasksPanel() {
   const [fS, setFS] = useState('');
   const [fP, setFP] = useState('');
   const [taskPage, setTaskPage] = useState(1);
+  const [boardPage, setBoardPage] = useState(1);
   const [taskTotalCount, setTaskTotalCount] = useState(0);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => (localStorage.getItem('splm-task-view') as any) || 'list');
   const [selectedTask, setSelectedTask] = useState<any>(null);
@@ -38,17 +45,23 @@ export default function TasksPanel() {
 
   const loadMeta = async () => {
     try {
-      const [pRes, dRes, s] = await Promise.all([
+      const [pRes, devs, s] = await Promise.all([
         listProductsPage({ page: 1, pageSize: 100, sortBy: 'updated_at', sortDir: 'desc' }),
-        listDevelopersPage({ page: 1, pageSize: 100, sortBy: 'name', sortDir: 'asc' }),
+        listDevelopers(),
         listSprints(),
       ]);
       setProducts(pRes.items);
-      setDevelopers(dRes.items);
+      setDevelopers(devs);
       setSprints(s);
     } catch (e: any) {
       toast.error('Failed to load references: ' + e.message);
     }
+  };
+
+  /** Products / developers / sprints load async on mount — avoid opening the task form before they arrive (empty Assign To). */
+  const refreshMetaThen = async (fn: () => void) => {
+    await loadMeta();
+    fn();
   };
 
   /** Returns the fresh tasks array for the current page/filters (avoids stale closure in drawer). */
@@ -56,8 +69,8 @@ export default function TasksPanel() {
     setLoading(true);
     try {
       const isKanban = viewMode === 'kanban';
-      const pageSize = isKanban ? KANBAN_TASK_FETCH_SIZE : DEFAULT_LIST_PAGE_SIZE;
-      const page = isKanban ? 1 : taskPage;
+      const pageSize = isKanban ? BOARD_PAGE_SIZE : DEFAULT_LIST_PAGE_SIZE;
+      const page = isKanban ? boardPage : taskPage;
       const r = await listTasksPage({
         page,
         pageSize,
@@ -66,7 +79,8 @@ export default function TasksPanel() {
         search: debouncedTaskSearch || undefined,
       });
       setTasks(r.items);
-      setTaskTotalCount(r.total_count ?? r.items.length);
+      const total = Number(r.total_count) || 0;
+      setTaskTotalCount(total);
       return r.items;
     } catch (e: any) {
       toast.error('Failed to load tasks: ' + e.message);
@@ -82,20 +96,53 @@ export default function TasksPanel() {
 
   useEffect(() => {
     setTaskPage(1);
+    setBoardPage(1);
   }, [fS, fP, debouncedTaskSearch]);
 
   const listTotalPages = Math.max(1, Math.ceil(taskTotalCount / DEFAULT_LIST_PAGE_SIZE));
+  const boardTotalPages = Math.max(1, Math.ceil(taskTotalCount / BOARD_PAGE_SIZE));
 
   useEffect(() => {
-    if (viewMode === 'list' && taskTotalCount > 0) {
-      const maxPage = Math.max(1, Math.ceil(taskTotalCount / DEFAULT_LIST_PAGE_SIZE));
-      if (taskPage > maxPage) {
-        setTaskPage(maxPage);
-        return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const isKanban = viewMode === 'kanban';
+        const pageSize = isKanban ? BOARD_PAGE_SIZE : DEFAULT_LIST_PAGE_SIZE;
+        const page = isKanban ? boardPage : taskPage;
+        const r = await listTasksPage({
+          page,
+          pageSize,
+          status: fS || undefined,
+          product_id: fP || undefined,
+          search: debouncedTaskSearch || undefined,
+        });
+        if (cancelled) return;
+        const total = Number(r.total_count) || 0;
+        if (viewMode === 'list' && total > 0) {
+          const maxPage = Math.max(1, Math.ceil(total / DEFAULT_LIST_PAGE_SIZE));
+          if (taskPage > maxPage) {
+            setTaskPage(maxPage);
+            return;
+          }
+        }
+        if (viewMode === 'kanban' && total > 0) {
+          const maxBoard = Math.max(1, Math.ceil(total / BOARD_PAGE_SIZE));
+          if (boardPage > maxBoard) {
+            setBoardPage(maxBoard);
+            return;
+          }
+        }
+        setTasks(r.items);
+        setTaskTotalCount(total);
+      } catch (e: any) {
+        if (!cancelled) toast.error('Failed to load tasks: ' + e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-    void loadTasks();
-  }, [taskPage, fS, fP, debouncedTaskSearch, viewMode]);
+    })();
+    return () => { cancelled = true; };
+  }, [taskPage, boardPage, fS, fP, debouncedTaskSearch, viewMode]);
 
   const toggleView = (mode: 'list' | 'kanban') => {
     setViewMode(mode);
@@ -105,6 +152,30 @@ export default function TasksPanel() {
   const blank = { title: '', description: '', type: 'feature', priority: 'medium', status: 'backlog', product_id: '', due_date: '', estimated_hours: 4, story_points: 0, sprint_id: '', source: 'manual' };
   const pname = (id: string) => products.find(p => p.id === id)?.name || '—';
   const dname = (id: string) => developers.find(d => d.id === id)?.name || 'Unassigned';
+
+  const taskStatusOptions = useMemo(
+    () => [{ value: '', label: 'All Statuses' }, ...optionsFromStrings([...TASK_STATUSES])],
+    [],
+  );
+  const taskStatusFormOptions = useMemo(() => optionsFromStrings([...TASK_STATUSES]), []);
+  const taskTypeOptions = useMemo(() => optionsFromStrings([...TASK_TYPES]), []);
+  const taskPriorityOptions = useMemo(() => optionsFromStrings([...TASK_PRIORITIES]), []);
+  const filterProductOptions = useMemo(
+    () => [{ value: '', label: 'All Products' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const formProductOptions = useMemo(
+    () => [{ value: '', label: 'Select…' }, ...products.map((p: any) => ({ value: p.id, label: p.name }))],
+    [products],
+  );
+  const sprintOptions = useMemo(
+    () => [{ value: '', label: 'No Sprint' }, ...sprints.map((s: any) => ({ value: s.id, label: s.name }))],
+    [sprints],
+  );
+  const assignOptions = useMemo(
+    () => [{ value: '', label: 'Unassigned' }, ...developers.map((d: any) => ({ value: d.id, label: d.name }))],
+    [developers],
+  );
 
   const doSave = async () => {
     if (!form.title || !form.product_id) return toast.error('Title and product are required');
@@ -129,11 +200,16 @@ export default function TasksPanel() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="md:col-span-2"><Label>Title *</Label><Input value={form.title || ''} onChange={e => setForm((f: any) => ({ ...f, title: e.target.value }))} /></div>
-        <div><Label>Product *</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.product_id || ''} onChange={e => setForm((f: any) => ({ ...f, product_id: e.target.value }))}><option value="">Select…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-        <div><Label>Type</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.type} onChange={e => setForm((f: any) => ({ ...f, type: e.target.value }))}>{['bug_fix', 'feature', 'api_update', 'security', 'research', 'maintenance'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Priority</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.priority} onChange={e => setForm((f: any) => ({ ...f, priority: e.target.value }))}>{['critical', 'high', 'medium', 'low'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Status</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.status} onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}>{['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => <option key={o}>{o}</option>)}</select></div>
-        <div><Label>Due Date</Label><Input type="date" value={form.due_date || ''} onChange={e => setForm((f: any) => ({ ...f, due_date: e.target.value }))} /></div>
+        <div><Label>Product *</Label><div className="mt-1"><SearchableSelect options={formProductOptions} value={form.product_id || ''} onValueChange={(v) => setForm((f: any) => ({ ...f, product_id: v }))} placeholder="Select…" searchPlaceholder="Search products…" contentWidth="wide" /></div></div>
+        <div><Label>Type</Label><div className="mt-1"><SearchableSelect options={taskTypeOptions} value={form.type} onValueChange={(v) => setForm((f: any) => ({ ...f, type: v }))} searchPlaceholder="Search types…" /></div></div>
+        <div><Label>Priority</Label><div className="mt-1"><SearchableSelect options={taskPriorityOptions} value={form.priority} onValueChange={(v) => setForm((f: any) => ({ ...f, priority: v }))} searchPlaceholder="Search priority…" /></div></div>
+        <div><Label>Status</Label><div className="mt-1"><SearchableSelect options={taskStatusFormOptions} value={form.status} onValueChange={(v) => setForm((f: any) => ({ ...f, status: v }))} searchPlaceholder="Search status…" /></div></div>
+        <DateField
+          label="Due Date"
+          value={toHtmlDateInputValue(form.due_date)}
+          onChange={(v) => setForm((f: any) => ({ ...f, due_date: v }))}
+          helperText="Optional. Leave empty for no due date."
+        />
         <div><Label>Estimated Hours</Label><Input type="number" min={1} value={form.estimated_hours || 4} onChange={e => setForm((f: any) => ({ ...f, estimated_hours: parseInt(e.target.value) || 4 }))} /></div>
         <div><Label>Story Points</Label>
           <div className="flex gap-1 mt-1">
@@ -146,8 +222,8 @@ export default function TasksPanel() {
             ))}
           </div>
         </div>
-        <div><Label>Sprint</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.sprint_id || ''} onChange={e => setForm((f: any) => ({ ...f, sprint_id: e.target.value || null }))}><option value="">No Sprint</option>{sprints.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-        <div><Label>Assign To</Label><select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={form.assigned_to || ''} onChange={e => setForm((f: any) => ({ ...f, assigned_to: e.target.value || null }))}><option value="">Unassigned</option>{developers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+        <div><Label>Sprint</Label><div className="mt-1"><SearchableSelect options={sprintOptions} value={form.sprint_id || ''} onValueChange={(v) => setForm((f: any) => ({ ...f, sprint_id: v || null }))} placeholder="No Sprint" searchPlaceholder="Search sprints…" contentWidth="wide" /></div></div>
+        <div><Label>Assign To</Label><div className="mt-1"><SearchableSelect options={assignOptions} value={form.assigned_to || ''} onValueChange={(v) => setForm((f: any) => ({ ...f, assigned_to: v || null }))} placeholder="Unassigned" searchPlaceholder="Search people…" contentWidth="wide" /></div></div>
         <div className="md:col-span-2"><Label>Description</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm min-h-[80px] bg-background" value={form.description || ''} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))} /></div>
       </div>
       <div className="flex gap-2"><Button onClick={doSave} disabled={saving}>{saving ? 'Saving…' : '💾 Save'}</Button><Button variant="outline" onClick={() => setForm(null)}>Cancel</Button></div>
@@ -193,9 +269,17 @@ export default function TasksPanel() {
               </button>
             </div>
             <ListPageSearchInput value={searchQ} onChange={setSearchQ} className="w-36 sm:w-44" />
-            <select className="border rounded-md px-3 py-2 text-sm bg-background" value={fS} onChange={e => setFS(e.target.value)}><option value="">All Statuses</option>{['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => <option key={o}>{o}</option>)}</select>
-            <select className="border rounded-md px-3 py-2 text-sm bg-background" value={fP} onChange={e => setFP(e.target.value)}><option value="">All Products</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Task</Button>}
+            <SearchableSelect className="min-w-[10rem] max-w-[12rem]" size="sm" triggerClassName="w-full" options={taskStatusOptions} value={fS} onValueChange={setFS} placeholder="All Statuses" searchPlaceholder="Search status…" />
+            <SearchableSelect className="min-w-[10rem] max-w-[14rem]" size="sm" triggerClassName="w-full" options={filterProductOptions} value={fP} onValueChange={setFP} placeholder="All Products" searchPlaceholder="Search products…" contentWidth="wide" />
+            {can('edit') && (
+              <Button
+                onClick={() =>
+                  refreshMetaThen(() => setForm({ ...blank }))
+                }
+              >
+                + New Task
+              </Button>
+            )}
           </div>
         </div>
         {loading ? <TableSkeleton /> :
@@ -211,7 +295,7 @@ export default function TasksPanel() {
               products={products}
               developers={developers}
               onRefresh={loadTasks}
-              onTaskClick={setSelectedTask}
+              onTaskClick={(t) => refreshMetaThen(() => setSelectedTask(t))}
             />
           ) : (
             <div className="space-y-2">
@@ -219,7 +303,7 @@ export default function TasksPanel() {
                 <div
                   key={t.id}
                   className="bg-muted/30 border rounded-lg p-4 flex justify-between items-start gap-4 hover:bg-muted/50 transition-colors group cursor-pointer"
-                  onClick={() => setSelectedTask(t)}
+                  onClick={() => refreshMetaThen(() => setSelectedTask(t))}
                 >
                   <div className="flex-1">
                     <div className="flex gap-2 items-center flex-wrap mb-1">
@@ -241,40 +325,69 @@ export default function TasksPanel() {
                   </div>
                   <div className="flex gap-1 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                     {t.status !== 'done' && (
-                      <select className="border rounded text-xs px-2 py-1 bg-background" value={t.status || 'backlog'} onChange={e => doStatusChange(t.id, e.target.value)}>
-                        {['backlog', 'assigned', 'in_progress', 'review', 'done', 'cancelled'].map(o => <option key={o}>{o}</option>)}
-                      </select>
+                      <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} className="min-w-[9rem] max-w-[11rem]">
+                        <SearchableSelect
+                          size="xs"
+                          triggerClassName="h-8 text-xs"
+                          options={taskStatusFormOptions}
+                          value={t.status || 'backlog'}
+                          onValueChange={(v) => doStatusChange(t.id, v)}
+                          searchPlaceholder="Status…"
+                          aria-label="Change task status"
+                        />
+                      </div>
                     )}
-                    {can('edit') && <Button size="sm" variant="outline" onClick={() => setForm(t)}>Edit</Button>}
+                    {can('edit') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          refreshMetaThen(() =>
+                            setForm({
+                              ...t,
+                              due_date: toHtmlDateInputValue(t.due_date),
+                            })
+                          )
+                        }
+                      >
+                        Edit
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )
         }
-        {!loading && viewMode === 'list' && listTotalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">
-              Page {taskPage} of {listTotalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={taskPage <= 1} onClick={() => setTaskPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={taskPage >= listTotalPages} onClick={() => setTaskPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
+        {!loading && viewMode === 'list' && taskTotalCount > 0 && (
+          <ListPaginationBar
+            page={taskPage}
+            totalPages={listTotalPages}
+            totalItems={taskTotalCount}
+            pageSize={DEFAULT_LIST_PAGE_SIZE}
+            onPageChange={setTaskPage}
+            disabled={loading}
+          />
         )}
         {!loading && viewMode === 'list' && taskTotalCount > DEFAULT_LIST_PAGE_SIZE && (
           <p className="text-xs text-muted-foreground mt-2">
             List shows {DEFAULT_LIST_PAGE_SIZE} tasks per page. Use filters to narrow results.
           </p>
         )}
-        {!loading && viewMode === 'kanban' && taskTotalCount > tasks.length && (
+        {!loading && viewMode === 'kanban' && taskTotalCount > 0 && (
+          <ListPaginationBar
+            className="mt-4"
+            page={boardPage}
+            totalPages={boardTotalPages}
+            totalItems={taskTotalCount}
+            pageSize={BOARD_PAGE_SIZE}
+            onPageChange={setBoardPage}
+            disabled={loading}
+          />
+        )}
+        {!loading && viewMode === 'kanban' && taskTotalCount > BOARD_PAGE_SIZE && (
           <p className="text-xs text-muted-foreground mt-2">
-            Board loads up to {KANBAN_TASK_FETCH_SIZE} tasks per filter ({tasks.length} shown, {taskTotalCount.toLocaleString()} total). Narrow with search or filters to see specific tasks.
+            Board shows {BOARD_PAGE_SIZE} tasks per page across all columns. Use pagination or filters to see the rest.
           </p>
         )}
       </div>

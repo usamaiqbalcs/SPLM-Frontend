@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/forms/SearchableSelect';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -174,6 +174,15 @@ export default function PromptLibraryPanel() {
     setPromptListPage(1);
   }, [activeCategory, debouncedPromptSearch]);
 
+  const promptCategoryFormOptions = useMemo(
+    () =>
+      (Object.entries(CATEGORY_CONFIG) as [Category, { label: string; color: string }][]).map(([key, cfg]) => ({
+        value: key,
+        label: cfg.label,
+      })),
+    [],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -210,14 +219,13 @@ export default function PromptLibraryPanel() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="category">Category</Label>
-                  <Select value={newPromptForm.category} onValueChange={(v) => setNewPromptForm({ ...newPromptForm, category: v as Category })}>
-                    <SelectTrigger id="category"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-                        <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    id="category"
+                    options={promptCategoryFormOptions}
+                    value={newPromptForm.category}
+                    onValueChange={(v) => setNewPromptForm({ ...newPromptForm, category: v as Category })}
+                    searchPlaceholder="Search category…"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="content">Content</Label>
