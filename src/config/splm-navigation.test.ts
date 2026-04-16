@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SPLM_NAV_SECTIONS, SPLM_ROUTE_PERMISSIONS } from '@/config/splm-navigation';
+import { SPLM_NAV_SECTIONS, SPLM_ROUTE_PERMISSIONS, SPLM_WIDE_CONTENT_TAB_IDS } from '@/config/splm-navigation';
 import { SPLM_NAV_TAB_ICONS } from '@/config/splm-nav-icons';
 
 describe('splm-navigation', () => {
@@ -13,5 +13,12 @@ describe('splm-navigation', () => {
 
   it('exposes route permissions for global search', () => {
     expect(SPLM_ROUTE_PERMISSIONS.search).toBe('read');
+  });
+
+  it('wide-layout tab ids match real nav tabIds', () => {
+    const tabIds = new Set(SPLM_NAV_SECTIONS.flatMap((g) => g.items.map((i) => i.tabId)));
+    for (const id of SPLM_WIDE_CONTENT_TAB_IDS) {
+      expect(tabIds.has(id), `SPLM_WIDE_CONTENT_TAB_IDS includes unknown tabId=${id}`).toBe(true);
+    }
   });
 });

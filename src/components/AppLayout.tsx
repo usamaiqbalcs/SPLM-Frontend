@@ -8,7 +8,7 @@ import { pathToTab, tabToRouteSegment } from '@/lib/splm-routes';
 import { SplmPage } from '@/components/layout/SplmPage';
 import { cn } from '@/lib/utils';
 import { LogOut, ChevronDown, Bell, HelpCircle, Moon, Sun, PanelLeftClose, PanelLeft, Menu } from 'lucide-react';
-import { SPLM_NAV_SECTIONS, SPLM_PAGE_TITLES } from '@/config/splm-navigation';
+import { SPLM_NAV_SECTIONS, SPLM_PAGE_TITLES, SPLM_WIDE_CONTENT_TAB_IDS } from '@/config/splm-navigation';
 import { SPLM_NAV_TAB_ICONS } from '@/config/splm-nav-icons';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useSessionTimer } from '@/hooks/useSessionTimer';
@@ -453,10 +453,18 @@ export default function AppLayout() {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 animate-fade-in scrollbar-thin sm:px-6 lg:px-10 lg:py-8">
+          {/*
+            Root cause (narrow “paginated page” feel): a global max-width + mx-auto wrapped every route.
+            Search keeps a deliberate narrow column; dashboards use full main width (see SPLM_WIDE_CONTENT_TAB_IDS).
+          */}
           <div
             className={cn(
-              'mx-auto w-full min-w-0 max-w-full',
-              activeTab === 'search' ? 'max-w-[960px]' : 'max-w-[var(--splm-page-max)]',
+              'w-full min-w-0',
+              activeTab === 'search'
+                ? 'mx-auto max-w-[960px]'
+                : SPLM_WIDE_CONTENT_TAB_IDS.has(activeTab)
+                  ? 'max-w-none'
+                  : 'mx-auto max-w-[var(--splm-page-max)]',
             )}
           >
             <SplmPage>

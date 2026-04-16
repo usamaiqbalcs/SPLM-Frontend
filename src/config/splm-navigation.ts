@@ -147,3 +147,10 @@ export function buildRoutePermissionMap(): Record<string, string> {
 }
 
 export const SPLM_ROUTE_PERMISSIONS: Record<string, string> = buildRoutePermissionMap();
+
+/**
+ * Tab ids (`tabId` in nav) whose main content should span the full width beside the sidebar.
+ * Other panels stay capped at `--splm-page-max` for comfortable reading width; dashboards are
+ * dense grids/charts and looked like a narrow “document column” when forced into 1200px + `mx-auto`.
+ */
+export const SPLM_WIDE_CONTENT_TAB_IDS = new Set<string>(['dashboard', 'kpi-dashboard']);

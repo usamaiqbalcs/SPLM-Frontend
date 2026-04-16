@@ -37,6 +37,7 @@
     --radius: 0.5rem;
     --radius-lg: 0.75rem;
     --radius-xl: 1rem;
+    /* Reading-width cap for form/list pages; dashboards bypass via `SPLM_WIDE_CONTENT_TAB_IDS` in AppLayout */
     --splm-page-max: 1200px;
     --splm-header-blur: 12px;
 
