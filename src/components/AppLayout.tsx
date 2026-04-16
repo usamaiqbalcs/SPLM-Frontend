@@ -7,7 +7,7 @@ import HelpModal from '@/components/HelpModal';
 import { pathToTab, tabToRouteSegment } from '@/lib/splm-routes';
 import { SplmPage } from '@/components/layout/SplmPage';
 import { cn } from '@/lib/utils';
-import { LogOut, ChevronDown, Bell, HelpCircle, Moon, Sun, Clock, PanelLeftClose, PanelLeft, Menu } from 'lucide-react';
+import { LogOut, ChevronDown, Bell, HelpCircle, Moon, Sun, PanelLeftClose, PanelLeft, Menu } from 'lucide-react';
 import { SPLM_NAV_SECTIONS, SPLM_PAGE_TITLES } from '@/config/splm-navigation';
 import { SPLM_NAV_TAB_ICONS } from '@/config/splm-nav-icons';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -79,18 +79,20 @@ export default function AppLayout() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Session timer — auto sign-out on expiry, reset on activity
-  const { display: timerDisplay, secs: timerSecs, isWarning: timerWarning } = useSessionTimer(30, async () => {
-    toast.warning('Session expired. Signing you out...');
-    await signOut();
-  });
-
-  // Warn user 5 minutes before session expires
-  useEffect(() => {
-    if (timerSecs === 5 * 60) {
-      toast.warning('Your session will expire in 5 minutes due to inactivity.');
-    }
-  }, [timerSecs]);
+  // Keep inactivity expiry logic without per-second countdown state/rendering.
+  useSessionTimer(
+    30,
+    async () => {
+      toast.warning('Session expired. Signing you out...');
+      await signOut();
+    },
+    {
+      warnBeforeSeconds: 5 * 60,
+      onWarn: () => {
+        toast.warning('Your session will expire in 5 minutes due to inactivity.');
+      },
+    },
+  );
 
   // Dark mode: restore from localStorage
   useEffect(() => {
@@ -287,42 +289,6 @@ export default function AppLayout() {
             </div>
           )}
         </div>
-
-        {/* Session Timer */}
-        {!sidebarCollapsed ? (
-          <div className={cn(
-            'mx-2.5 mt-2.5 px-2.5 py-2 rounded-md border transition-colors',
-            timerWarning
-              ? 'bg-destructive/20 border-destructive/30'
-              : 'bg-primary-foreground/5 border-primary-foreground/10'
-          )}>
-            <div className={cn(
-              'flex items-center gap-1.5 text-[10px]',
-              timerWarning ? 'text-destructive font-bold' : 'text-primary-foreground/50'
-            )}>
-              <Clock className="w-3 h-3" />
-              Session:
-              <span className={cn('font-semibold', timerWarning ? 'text-destructive' : 'text-primary-foreground/80')}>
-                {timerDisplay}
-              </span>
-              {timerWarning && <span className="ml-auto text-[9px]">⚠ expiring</span>}
-            </div>
-          </div>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className={cn(
-                'mx-1.5 mt-2.5 px-1 py-2 rounded-md border flex items-center justify-center',
-                timerWarning ? 'bg-destructive/20 border-destructive/30' : 'bg-primary-foreground/5 border-primary-foreground/10'
-              )}>
-                <Clock className={cn('w-3.5 h-3.5', timerWarning ? 'text-destructive' : 'text-primary-foreground/50')} />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              Session: {timerDisplay}{timerWarning ? ' ⚠ expiring soon' : ''}
-            </TooltipContent>
-          </Tooltip>
-        )}
 
         {/* Navigation */}
         <nav className="mt-1 flex-1 overflow-y-auto px-1.5 pb-3 scrollbar-thin">
