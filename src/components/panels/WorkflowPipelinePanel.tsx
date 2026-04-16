@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { ChevronRight, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DEFAULT_LIST_PAGE_SIZE, ListPaginationBar } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 
 const PHASES = ['pm_build', 'dev_handoff', 'qa_cycle', 'acceptance', 'production'] as const;
 type Phase = typeof PHASES[number];
@@ -127,7 +128,7 @@ export default function WorkflowPipelinePanel() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
       {/* Transition Dialog */}
       <Dialog open={!!transitionTarget} onOpenChange={(o) => !o && setTransitionTarget(null)}>
         <DialogContent>
@@ -215,13 +216,20 @@ export default function WorkflowPipelinePanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Main Panel */}
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold text-primary">📊 Workflow Pipeline ({workflows.length})</h3>
-          {can('edit') && <Button onClick={load} variant="outline" size="sm">Refresh</Button>}
-        </div>
+      <SplmPageHeader
+        title="Workflow pipeline"
+        subtitle="Advance products through gated phases and review transition history per product."
+        actions={
+          can('edit') ? (
+            <Button type="button" onClick={load} variant="outline" size="sm">
+              Refresh
+            </Button>
+          ) : undefined
+        }
+      />
 
+      {/* Footer sits outside the vertical stack so inset pagination aligns with card edges, not spaced like a row. */}
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
         {loading ? (
           <TableSkeleton />
         ) : workflows.length === 0 ? (
@@ -231,7 +239,8 @@ export default function WorkflowPipelinePanel() {
             <p className="text-xs mt-1">Products will appear here once they enter the workflow</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <>
+            <div className="space-y-3">
             {pagedWorkflows.map((workflow) => {
               const nextPhase = isPhase(workflow.phase) ? getNextPhase(workflow.phase) : null;
               const currentPhaseConfig = isPhase(workflow.phase) ? PHASE_CONFIG[workflow.phase] : null;
@@ -316,7 +325,9 @@ export default function WorkflowPipelinePanel() {
                 </div>
               );
             })}
+            </div>
             <ListPaginationBar
+              variant="inset"
               page={wfPage}
               totalPages={wfTotalPages}
               totalItems={workflows.length}
@@ -324,7 +335,7 @@ export default function WorkflowPipelinePanel() {
               onPageChange={setWfPage}
               disabled={loading}
             />
-          </div>
+          </>
         )}
       </div>
     </div>

@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 
 /** Rows = permissions, columns = roles — matches backend matrix DTO. */
 export default function AdminRbacPanel() {
@@ -134,26 +135,32 @@ export default function AdminRbacPanel() {
   }
 
   return (
-    <div className="space-y-6">
-      <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-        Edit which permissions each application role has. Labels below match sidebar modules (see{' '}
-        <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-navigation.ts</code> and{' '}
-        <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-permission-ui.ts</code>). The
-        server remains authoritative for API access.
-      </p>
+    <div className="flex min-h-0 min-w-0 flex-col space-y-6">
+      <SplmPageHeader
+        title="Role permissions"
+        subtitle={
+          <>
+            Edit which permissions each application role has. Labels match sidebar modules (see{' '}
+            <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-navigation.ts</code> and{' '}
+            <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-permission-ui.ts</code>
+            ). The server remains authoritative for API access.
+          </>
+        }
+        actions={
+          <>
+            <Button type="button" onClick={() => void saveAll()} disabled={!dirty || saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void load()} disabled={saving}>
+              Reload
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" onClick={() => void saveAll()} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save changes'}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => void load()} disabled={saving}>
-          Reload
-        </Button>
-      </div>
-
-      <Card className="overflow-hidden p-0 shadow-splm">
+      <Card className="min-h-0 min-w-0 overflow-hidden border-border/80 p-0 shadow-splm">
         <div className="overflow-x-auto">
-        <Table>
+        <Table wrapperClassName="overflow-x-auto overflow-y-visible">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="sticky left-0 z-20 min-w-[220px] bg-card shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">

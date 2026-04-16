@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listProductsPage, getProduct, saveProduct, deleteProduct } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { StatusBadge, PriorityBar } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,7 +147,7 @@ export default function ProductsPanel() {
   );
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}
@@ -156,29 +157,43 @@ export default function ProductsPanel() {
         variant="destructive"
         onConfirm={doDelete}
       />
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">
-            📦 Products
-            <span className="text-muted-foreground font-normal text-sm ml-2">
-              ({items.length} of {totalCount.toLocaleString()})
-            </span>
-          </h3>
-          <div className="flex gap-2 flex-wrap">
+      <SplmPageHeader
+        title="Products"
+        subtitle="Portfolio of SPLM-tracked products — versions, cadence, priority, and roster context."
+        actions={can('edit') ? <Button onClick={() => setForm({ ...blank })}>+ New product</Button> : undefined}
+      />
+
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
             <ListPageSearchInput value={filter} onChange={setFilter} />
-            <SearchableSelect className="min-w-[10rem]" size="sm" triggerClassName="w-full" options={productStatusFilterOptions} value={statusF} onValueChange={setStatusF} placeholder="All Statuses" searchPlaceholder="Search status…" />
-            {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Product</Button>}
+            <SearchableSelect
+              className="min-w-[10rem]"
+              size="sm"
+              triggerClassName="w-full"
+              options={productStatusFilterOptions}
+              value={statusF}
+              onValueChange={setStatusF}
+              placeholder="All Statuses"
+              searchPlaceholder="Search status…"
+            />
           </div>
+          {!loading && totalCount > 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {items.length} of {totalCount.toLocaleString()} on this page
+            </span>
+          )}
         </div>
-        {loading ? <TableSkeleton /> :
+        {(loading ? <TableSkeleton /> :
           items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <span className="text-4xl mb-3">📦</span>
               <p className="font-medium">No products found</p>
               <p className="text-xs mt-1">Create your first product to get started</p>
             </div>
-          ) :
-            <div className="overflow-x-auto">
+          ) : (
+            <div className="overflow-x-auto overflow-y-visible">
+              {/* Horizontal scroll only: page shell keeps vertical scroll (avoids nested overflow). */}
               <table className="w-full text-sm">
                 <thead><tr className="bg-muted">{['Product', 'Version', 'Status', 'Priority', 'Cadence', 'Customers', 'Actions'].map(h => <th key={h} className="text-left px-3 py-2 font-bold text-xs text-foreground">{h}</th>)}</tr></thead>
                 <tbody>{items.map(p => (
@@ -220,21 +235,17 @@ export default function ProductsPanel() {
                 ))}</tbody>
               </table>
             </div>
-        }
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
+          ))}
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

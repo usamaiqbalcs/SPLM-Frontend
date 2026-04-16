@@ -8,6 +8,7 @@ import {
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -290,7 +291,7 @@ export default function QACyclesPanel() {
   };
 
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-4">
       {/* Create Cycle Dialog */}
       <Dialog open={createCycleOpen} onOpenChange={setCreateCycleOpen}>
         <DialogContent>
@@ -503,27 +504,33 @@ export default function QACyclesPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Main Panel */}
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
-          <h3 className="text-lg font-bold text-primary">
-            🧪 QA Cycles (
-            {debouncedCycleSearch.trim() ? `${filteredCycles.length} / ${cycles.length}` : cycles.length})
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <ListPageSearchInput
-              value={cycleSearch}
-              onChange={setCycleSearch}
-              className="w-full sm:w-52"
-              aria-label="Search QA cycles"
-            />
-            {can('edit') && (
-              <Button onClick={() => setCreateCycleOpen(true)}>
-                <Plus className="w-4 h-4 mr-1" />
-                New Cycle
-              </Button>
-            )}
-          </div>
+      <SplmPageHeader
+        title="QA cycles"
+        subtitle="Track test cycles per product, expand to manage issues, and run the cycle analyzer when enabled."
+        actions={
+          can('edit') ? (
+            <Button type="button" onClick={() => setCreateCycleOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              New cycle
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* Main listing: inset pagination shares width with cycle rows (not spaced as another stack item). */}
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {debouncedCycleSearch.trim()
+              ? `${filteredCycles.length} of ${cycles.length} match`
+              : `${cycles.length} cycle${cycles.length === 1 ? '' : 's'}`}
+          </span>
+          <ListPageSearchInput
+            value={cycleSearch}
+            onChange={setCycleSearch}
+            className="w-full sm:w-52"
+            aria-label="Search QA cycles"
+          />
         </div>
 
         {loading ? (
@@ -540,7 +547,8 @@ export default function QACyclesPanel() {
             <p className="text-xs mt-1">Clear the search box to see all cycles</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <>
+            <div className="space-y-2">
             {pagedFilteredCycles.map((cycle) => (
               <div key={cycle.id}>
                 {/* Cycle Row */}
@@ -647,8 +655,8 @@ export default function QACyclesPanel() {
                             </Button>
                           )}
                         </div>
-                        <div className="border rounded-lg overflow-hidden">
-                          <Table>
+                        <div className="overflow-hidden rounded-lg border">
+                          <Table wrapperClassName="overflow-x-auto overflow-y-visible">
                             <TableHeader>
                               <TableRow className="bg-muted/50">
                                 <TableHead className="text-xs">Ref</TableHead>
@@ -707,7 +715,9 @@ export default function QACyclesPanel() {
                 )}
               </div>
             ))}
+            </div>
             <ListPaginationBar
+              variant="inset"
               page={cycleListPage}
               totalPages={cycleTotalPages}
               totalItems={filteredCycles.length}
@@ -715,7 +725,7 @@ export default function QACyclesPanel() {
               onPageChange={setCycleListPage}
               disabled={loading}
             />
-          </div>
+          </>
         )}
       </div>
     </div>

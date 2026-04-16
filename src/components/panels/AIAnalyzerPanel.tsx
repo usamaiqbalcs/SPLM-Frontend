@@ -7,6 +7,7 @@ import {
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -157,7 +158,7 @@ export default function AIAnalyzerPanel() {
   }, [filteredReports]);
 
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-4">
       {/* ── Trigger dialog ── */}
       <AlertDialog open={triggerDialogOpen} onOpenChange={setTriggerDialogOpen}>
         <AlertDialogContent>
@@ -189,6 +190,12 @@ export default function AIAnalyzerPanel() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <SplmPageHeader
+        title="AI analyzer reports"
+        subtitle="Backend diff analysis runs per QA cycle — review status, confidence, and drill into changed files."
+        actions={<Button onClick={() => setTriggerDialogOpen(true)}>Trigger new analysis</Button>}
+      />
+
       {/* ── Stats row ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
@@ -208,19 +215,15 @@ export default function AIAnalyzerPanel() {
         ))}
       </div>
 
-      {/* ── Main panel ── */}
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-          <h3 className="text-lg font-bold text-primary">⚡ Backend AI Analyzer Reports</h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <ListPageSearchInput
-              value={listSearch}
-              onChange={setListSearch}
-              className="w-full sm:w-52"
-              aria-label="Search analyzer reports"
-            />
-            <Button onClick={() => setTriggerDialogOpen(true)}>🔧 Trigger New Analysis</Button>
-          </div>
+      {/* ── Main panel (pagination outside stacked rows = aligned inset footer). ── */}
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4">
+          <ListPageSearchInput
+            value={listSearch}
+            onChange={setListSearch}
+            className="w-full sm:w-52"
+            aria-label="Search analyzer reports"
+          />
         </div>
 
         {loading ? (
@@ -237,7 +240,8 @@ export default function AIAnalyzerPanel() {
             <p className="text-xs mt-1">Clear the search box to see all reports</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <>
+            <div className="space-y-2">
             {pagedFilteredReports.map(report => {
               const statusConfig = getStatusConfig(report.status);
               const confidenceConfig = getConfidenceConfig(report.overall_confidence);
@@ -397,7 +401,9 @@ export default function AIAnalyzerPanel() {
                 </div>
               );
             })}
+            </div>
             <ListPaginationBar
+              variant="inset"
               page={reportListPage}
               totalPages={reportTotalPages}
               totalItems={filteredReports.length}
@@ -405,7 +411,7 @@ export default function AIAnalyzerPanel() {
               onPageChange={setReportListPage}
               disabled={loading}
             />
-          </div>
+          </>
         )}
       </div>
     </div>

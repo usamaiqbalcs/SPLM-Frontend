@@ -15,6 +15,8 @@ import {
 import { Loader2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { DEFAULT_LIST_PAGE_SIZE, ListPaginationBar } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
+import { Card } from '@/components/ui/card';
 
 interface Product { id: string; name: string }
 
@@ -209,7 +211,7 @@ export default function PDMAcceptancePanel() {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
+    <div className="flex min-h-0 min-w-0 flex-col gap-6">
       <Alert className="border-amber-200 bg-amber-50">
         <AlertTriangle className="h-4 w-4 text-amber-600" />
         <AlertDescription className="text-amber-800 font-medium">
@@ -217,16 +219,14 @@ export default function PDMAcceptancePanel() {
         </AlertDescription>
       </Alert>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">PDM Acceptance Sign-Off</h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage product deployment approvals</p>
-        </div>
-
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Create Sign-Off Record</Button>
-          </DialogTrigger>
+      <SplmPageHeader
+        title="PDM acceptance sign-off"
+        subtitle="Manage product deployment approvals and release gates before production."
+        actions={
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>Create sign-off record</Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Create Sign-Off Record</DialogTitle></DialogHeader>
             <div className="space-y-4">
@@ -285,17 +285,17 @@ export default function PDMAcceptancePanel() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
-      {/* Records Table */}
-      <div className="border rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-y-auto min-h-0">
+      {/* Single listing card: table + inset pagination share width (avoids footer narrower than grid). */}
+      <Card className="flex min-w-0 flex-col overflow-hidden border-border/80 shadow-splm">
         {signoffRecords.length === 0 ? (
-          <div className="flex items-center justify-center h-full p-8 text-muted-foreground">
+          <div className="flex items-center justify-center px-4 py-16 text-sm text-muted-foreground">
             <p>No sign-off records yet. Create one to get started.</p>
           </div>
         ) : (
-          <Table>
+          <Table wrapperClassName="overflow-x-auto overflow-y-visible">
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
@@ -336,8 +336,8 @@ export default function PDMAcceptancePanel() {
             </TableBody>
           </Table>
         )}
-        </div>
         <ListPaginationBar
+          variant="inset"
           page={recordPage}
           totalPages={recordTotalPages}
           totalItems={signoffRecords.length}
@@ -345,7 +345,7 @@ export default function PDMAcceptancePanel() {
           onPageChange={setRecordPage}
           disabled={submitting}
         />
-      </div>
+      </Card>
 
       {/* Review Dialog */}
       {selectedRecord && (

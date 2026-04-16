@@ -5,6 +5,7 @@ import { StatusBadge, PriorityBar } from '@/components/StatusBadge';
 import { fmtDateTime, fmtDate, ENV_CONFIG } from '@/lib/splm-utils';
 import { DashboardSkeleton } from '@/components/ui/loading-skeleton';
 import { SplmEmptyState } from '@/components/layout/SplmEmptyState';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -30,7 +31,6 @@ import {
   BarChart3,
   PieChart,
   Zap,
-  Activity,
 } from 'lucide-react';
 
 const PIE_COLORS = [
@@ -42,17 +42,26 @@ const PIE_COLORS = [
 ];
 
 /**
- * Dashboard shell layout (see JSX regions below):
- * - Full-width app main is fine; problems came from unconstrained flex children + unbounded lists,
- *   which stretched cards and let Team workload grow without bound. We use explicit grids per row,
- *   paired fixed-height scroll areas for primary columns, fixed chart viewport heights, and
- *   max-height + overflow-auto on workload so one widget cannot dominate the viewport.
+ * Dashboard layout — explicit B2B-style rows (single vertical rhythm via DASHBOARD_STACK_GAP):
+ * Row 1: KPI strip — 4 equal columns (xl), shared min-height, label/value/sub + icon hierarchy.
+ * Row 2: Activity pair — Recent deployments | Top priority products (1:1 on lg), synced list
+ *   viewports (PRIMARY_LIST_VIEWPORT) + overflow-y-auto so short content does not leave huge holes.
+ * Row 3: Focus pair — Product focus | Active sprints (lg 6+6 for visual balance); charts use fixed
+ *   pixel heights inside cards so Recharts never stretches the page.
+ * Row 3b (optional): Task distribution — full-width, reduced pie height when shown with row 3.
+ * Row 4: Team workload — full width, WORKLOAD_MAX_HEIGHT + overflow-y; progress uses softer tiers
+ *   (primary/amber/destructive) so high load reads as “attention” without screaming red for 70%.
+ * Row 5: Summary strip — 3 equal secondary metrics, styled closer to KPI cards for cohesion.
  */
-const PRIMARY_LIST_VIEWPORT = 'h-[min(17.5rem,38vh)]';
-const CHART_CARD_HEIGHT = 220;
-const WORKLOAD_MAX_HEIGHT = 'min(16rem,34vh)';
-/** Chart viewport for priority widget (slightly taller than pie sibling for Y-axis labels). */
-const PRIORITY_CHART_HEIGHT = 248;
+const DASHBOARD_STACK_GAP = 'gap-5';
+/** Shared scroll viewport for deployment + priority lists (keeps row 2 heights aligned). */
+const PRIMARY_LIST_VIEWPORT = 'h-[min(12.5rem,28vh)]';
+const CHART_CARD_HEIGHT = 168;
+const WORKLOAD_MAX_HEIGHT = 'min(13rem,26vh)';
+/** Horizontal bar chart for product focus — bounded so row 3 stays compact. */
+const PRIORITY_CHART_HEIGHT = 200;
+/** Unified card chrome across dashboard widgets. */
+const DASH_CARD = 'border-border/70 bg-card shadow-sm';
 
 /**
  * Root cause: `GET /analytics/dashboard` returns `top_products` as task/count rows (`product_id`,
@@ -270,39 +279,39 @@ export default function DashboardPanel() {
       return pctB - pctA;
     });
 
-  /** Product focus + sprints share one lg row (5/12 vs 7/12); requires charts strip + at least one sprint. */
+  /** Product focus + sprints share one lg row (6/6) when analytics strip + active sprints both exist. */
   const hasFocusSprintsPair = showChartsRow && activeSprints.length > 0;
 
   const renderProductFocusCard = (opts?: { fillColumn?: boolean }) => (
     <Card
       className={cn(
-        'flex min-h-0 flex-col overflow-hidden border-border/80 bg-card shadow-splm',
+        DASH_CARD,
+        'flex min-h-0 flex-col overflow-hidden',
         opts?.fillColumn && 'h-full min-h-0',
       )}
     >
-      <CardHeader className="shrink-0 space-y-2 pb-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-              <BarChart3 className="h-4 w-4 text-primary" aria-hidden />
+      <CardHeader className="shrink-0 space-y-0 pb-3 pt-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/10">
+              <BarChart3 className="h-5 w-5 text-primary" aria-hidden />
             </div>
-            <div>
-              <CardTitle>Product focus</CardTitle>
-              <CardDescription className="mt-1 max-w-prose">
-                Top products by <span className="font-medium text-foreground">catalog priority</span> when set,
-                otherwise by a compact <span className="font-medium text-foreground">activity</span> index from open
-                tasks and completion on the analytics feed.
+            <div className="min-w-0">
+              <CardTitle className="text-base font-semibold tracking-tight">Product focus</CardTitle>
+              <CardDescription className="mt-1.5 line-clamp-2 text-xs leading-relaxed">
+                Catalog <span className="font-medium text-foreground/90">priority</span> when set; otherwise a compact{' '}
+                <span className="font-medium text-foreground/90">activity</span> index from open tasks and completion.
               </CardDescription>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
             {avgCatalogPriority != null && (
-              <Badge variant="secondary" className="tabular-nums">
-                Avg priority {avgCatalogPriority}
+              <Badge variant="secondary" className="tabular-nums text-[10px]">
+                Avg {avgCatalogPriority}
               </Badge>
             )}
             <Badge variant="outline" className="text-[10px] font-normal">
-              Top {priorityChartRows.length || mergedTopProducts.length || 0} shown
+              Top {priorityChartRows.length || mergedTopProducts.length || 0}
             </Badge>
           </div>
         </div>
@@ -314,7 +323,7 @@ export default function DashboardPanel() {
         )}
       >
         {priorityChartRows.length === 0 ? (
-          <div className="flex min-h-[11rem] flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-border/80 bg-muted/20 px-3 py-6 text-center sm:min-h-[12rem]">
+          <div className="flex min-h-[9.5rem] flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/15 px-3 py-5 text-center">
             <BarChart3 className="mb-2 h-9 w-9 text-muted-foreground/50" aria-hidden />
             <p className="text-sm font-medium text-foreground">No priority or activity signal yet</p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
@@ -335,27 +344,27 @@ export default function DashboardPanel() {
               </span>
             </div>
             <div
-              className="w-full shrink-0 rounded-lg border border-border/60 bg-muted/10 p-1"
+              className="w-full shrink-0 rounded-lg border border-border/60 bg-muted/10 p-1.5"
               style={{ height: PRIORITY_CHART_HEIGHT }}
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={priorityChartRows}
                   layout="vertical"
-                  margin={{ left: 4, right: 24, top: 6, bottom: 6 }}
-                  barCategoryGap={10}
+                  margin={{ left: 2, right: 12, top: 4, bottom: 4 }}
+                  barCategoryGap={8}
                 >
                   <XAxis
                     type="number"
                     domain={[0, priorityChartMaxX]}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 10 }}
                     tickLine={false}
                     axisLine={{ stroke: 'hsl(var(--border))' }}
                   />
                   <YAxis
                     type="category"
                     dataKey="name"
-                    width={96}
+                    width={88}
                     tick={{ fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
@@ -388,7 +397,7 @@ export default function DashboardPanel() {
                       );
                     }}
                   />
-                  <Bar dataKey="score" radius={[0, 5, 5, 0]} maxBarSize={20}>
+                  <Bar dataKey="score" radius={[0, 4, 4, 0]} maxBarSize={16}>
                     {priorityChartRows.map((entry) => (
                       <Cell
                         key={entry.key}
@@ -405,19 +414,30 @@ export default function DashboardPanel() {
     </Card>
   );
 
-  const renderActiveSprintsCard = (sprintGridClass: string, stretchColumn?: boolean) => (
+  const renderActiveSprintsCard = (stretchColumn?: boolean) => {
+    const sprintGridClass = stretchColumn
+      ? 'grid auto-rows-fr gap-3 sm:grid-cols-2'
+      : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4';
+    return (
     <Card
       className={cn(
-        'overflow-hidden border-border/80 bg-card shadow-splm',
+        DASH_CARD,
+        'overflow-hidden',
         stretchColumn && 'flex h-full min-h-0 flex-col',
       )}
     >
-      <CardHeader className="shrink-0 space-y-1 pb-2">
-        <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-muted-foreground" aria-hidden />
-          <CardTitle>Active sprints</CardTitle>
+      <CardHeader className="shrink-0 space-y-0 pb-3 pt-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 ring-1 ring-amber-500/15">
+            <Zap className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <CardTitle className="text-base font-semibold tracking-tight">Active sprints</CardTitle>
+            <CardDescription className="mt-1 text-xs leading-relaxed">
+              In progress or planning — task and timeline progress
+            </CardDescription>
+          </div>
         </div>
-        <CardDescription>In progress or planning — task and timeline progress</CardDescription>
       </CardHeader>
       <CardContent
         className={cn(
@@ -425,7 +445,7 @@ export default function DashboardPanel() {
           stretchColumn && 'flex min-h-0 flex-1 flex-col',
         )}
       >
-        <div className={cn('grid gap-3', sprintGridClass)}>
+        <div className={cn('min-h-0 flex-1', sprintGridClass)}>
           {activeSprints.map((sp) => {
             const sprintTasks = sp.tasks || [];
             const done = sprintTasks.filter((t: any) => t.status === 'done').length;
@@ -446,32 +466,32 @@ export default function DashboardPanel() {
               <div
                 key={sp.id}
                 className={cn(
-                  'flex min-h-[9rem] flex-col rounded-xl border p-3 transition-colors sm:min-h-[9.5rem] sm:p-3.5',
-                  isOverdue ? 'border-destructive/35 bg-destructive/[0.06]' : 'border-border/80 bg-muted/15',
+                  'flex h-full min-h-[8.25rem] flex-col rounded-lg border p-3.5 transition-colors',
+                  isOverdue ? 'border-destructive/30 bg-destructive/[0.04]' : 'border-border/60 bg-muted/20',
                 )}
               >
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                <div className="mb-2.5 flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">{sp.name}</p>
                     {sp.goal ? (
-                      <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{sp.goal}</p>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{sp.goal}</p>
                     ) : null}
                   </div>
-                  <StatusBadge status={sp.status || 'planning'} className="shrink-0 scale-90" />
+                  <StatusBadge status={sp.status || 'planning'} className="shrink-0" />
                 </div>
 
-                <div className="mt-auto space-y-2">
+                <div className="mt-auto space-y-2.5">
                   {total > 0 && (
                     <div>
-                      <div className="mb-0.5 flex justify-between text-[10px] text-muted-foreground">
+                      <div className="mb-1 flex justify-between text-[10px] font-medium text-muted-foreground">
                         <span>
                           Tasks {done}/{total}
                         </span>
-                        <span>{pct}%</span>
+                        <span className="tabular-nums">{pct}%</span>
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted/80">
                         <div
-                          className="h-full rounded-full bg-success transition-all"
+                          className="h-full rounded-full bg-emerald-600/85 dark:bg-emerald-500/80"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -480,13 +500,18 @@ export default function DashboardPanel() {
 
                   {start && end && (
                     <div>
-                      <div className="mb-0.5 flex justify-between text-[10px] text-muted-foreground">
-                        <span>{fmtDate(start)}</span>
-                        <span className={isOverdue ? 'font-semibold text-destructive' : ''}>{fmtDate(end)}</span>
+                      <div className="mb-1 flex justify-between text-[10px] font-medium text-muted-foreground">
+                        <span className="tabular-nums">{fmtDate(start)}</span>
+                        <span className={cn('tabular-nums', isOverdue ? 'font-semibold text-destructive' : '')}>
+                          {fmtDate(end)}
+                        </span>
                       </div>
-                      <div className="h-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-1 overflow-hidden rounded-full bg-muted/80">
                         <div
-                          className={cn('h-full rounded-full', isOverdue ? 'bg-destructive' : 'bg-primary/45')}
+                          className={cn(
+                            'h-full rounded-full',
+                            isOverdue ? 'bg-destructive/75' : 'bg-primary/40',
+                          )}
                           style={{ width: `${datePct}%` }}
                         />
                       </div>
@@ -499,34 +524,44 @@ export default function DashboardPanel() {
         </div>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* statsRow: equal-height KPI tiles; grid stretches row so cards share one band height */}
+    <div className={cn('animate-fade-in flex flex-col', DASHBOARD_STACK_GAP)}>
+      <SplmPageHeader
+        className="mb-0 sm:mb-1"
+        title="Dashboard"
+        subtitle="At-a-glance health across products, delivery, people, and risk — tuned for a quick daily scan."
+      />
+
+      {/* Row 1 — KPI strip: four equal metrics, shared min-height band */}
       <section aria-label="Key metrics">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
           {tiles.map((t) => (
             <Card
               key={t.label}
-              className="flex min-h-[7.5rem] flex-col overflow-hidden transition-shadow duration-200 hover:shadow-splm-md"
+              className={cn(
+                DASH_CARD,
+                'flex min-h-[5.75rem] flex-col overflow-hidden transition-shadow duration-200 hover:shadow-md',
+              )}
             >
-              <CardContent className="flex flex-1 flex-col justify-between p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.label}</p>
-                    <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">
+              <CardContent className="flex flex-1 flex-col justify-center p-4 sm:min-h-[6rem] sm:p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.label}</p>
+                    <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]">
                       {t.value ?? 0}
                     </p>
-                    <p className="text-xs text-muted-foreground">{t.sub}</p>
+                    <p className="text-[11px] leading-snug text-muted-foreground">{t.sub}</p>
                   </div>
                   <div
                     className={cn(
-                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 sm:rounded-2xl',
+                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.06]',
                       t.accent,
                     )}
                   >
-                    <t.icon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.75} aria-hidden />
+                    <t.icon className="h-5 w-5" strokeWidth={1.65} aria-hidden />
                   </div>
                 </div>
               </CardContent>
@@ -535,25 +570,32 @@ export default function DashboardPanel() {
         </div>
       </section>
 
-      {/* primaryGrid: two columns share one row height; list bodies scroll inside a fixed viewport */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch" aria-label="Activity">
-        <Card className="flex min-h-0 flex-col overflow-hidden">
-          <CardHeader className="shrink-0 space-y-1 pb-2">
-            <div className="flex items-center gap-2">
-              <Rocket className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <CardTitle>Recent deployments</CardTitle>
+      {/* Row 2 — deployments | priority lists: 1:1 lg, matched list viewports + scrollbar-gutter-stable feel */}
+      <section
+        className={cn('grid grid-cols-1 lg:grid-cols-2 lg:items-stretch', 'gap-4 lg:gap-5')}
+        aria-label="Activity"
+      >
+        <Card className={cn(DASH_CARD, 'flex min-h-0 flex-col overflow-hidden')}>
+          <CardHeader className="shrink-0 space-y-0 pb-2 pt-4">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Rocket className="h-4 w-4 text-muted-foreground" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold tracking-tight">Recent deployments</CardTitle>
+                <CardDescription className="mt-0.5 text-xs">Latest pipeline activity across products</CardDescription>
+              </div>
             </div>
-            <CardDescription>Latest pipeline activity across products</CardDescription>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
+          <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-0 sm:px-5 sm:pb-4">
             <div
               className={cn(
-                'min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-muted/20',
+                'min-h-0 overflow-y-auto overscroll-contain rounded-md border border-border/50 bg-muted/15 [scrollbar-gutter:stable]',
                 PRIMARY_LIST_VIEWPORT,
               )}
             >
               {deploys.length === 0 ? (
-                <div className="p-4">
+                <div className="p-3">
                   <SplmEmptyState
                     icon={Rocket}
                     title="No deployments yet"
@@ -561,25 +603,27 @@ export default function DashboardPanel() {
                   />
                 </div>
               ) : (
-                <ul className="divide-y divide-border/60">
+                <ul className="divide-y divide-border/50">
                   {deploys.map((d) => {
                     const ec = ENV_CONFIG[d.environment as keyof typeof ENV_CONFIG];
                     return (
                       <li key={d.id}>
-                        <div className="flex flex-col gap-1.5 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <div className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">{pname(d.product_id)}</p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="truncate text-sm font-medium leading-tight text-foreground">
+                              {pname(d.product_id)}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
                               <span className="inline-flex items-center gap-1">
                                 {ec?.icon} {d.environment}
                               </span>
                               <span className="mx-1 text-border">·</span>
-                              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">v{d.version}</code>
+                              <code className="rounded bg-background/80 px-1 py-px font-mono text-[10px]">v{d.version}</code>
                               <span className="mx-1 text-border">·</span>
                               {fmtDateTime(d.created_at)}
                             </p>
                           </div>
-                          <StatusBadge status={d.status || ''} className="shrink-0 self-start sm:self-center" />
+                          <StatusBadge status={d.status || ''} className="w-fit shrink-0 self-start sm:self-center" />
                         </div>
                       </li>
                     );
@@ -590,23 +634,27 @@ export default function DashboardPanel() {
           </CardContent>
         </Card>
 
-        <Card className="flex min-h-0 flex-col overflow-hidden">
-          <CardHeader className="shrink-0 space-y-1 pb-2">
-            <div className="flex items-center gap-2">
-              <Flame className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <CardTitle>Top priority products</CardTitle>
+        <Card className={cn(DASH_CARD, 'flex min-h-0 flex-col overflow-hidden')}>
+          <CardHeader className="shrink-0 space-y-0 pb-2 pt-4">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Flame className="h-4 w-4 text-muted-foreground" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold tracking-tight">Top priority products</CardTitle>
+                <CardDescription className="mt-0.5 text-xs">Catalog priority or derived activity signal</CardDescription>
+              </div>
             </div>
-            <CardDescription>Ranked by composite priority score</CardDescription>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
+          <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-0 sm:px-5 sm:pb-4">
             <div
               className={cn(
-                'min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-muted/20',
+                'min-h-0 overflow-y-auto overscroll-contain rounded-md border border-border/50 bg-muted/15 [scrollbar-gutter:stable]',
                 PRIMARY_LIST_VIEWPORT,
               )}
             >
               {mergedTopProducts.length === 0 ? (
-                <div className="p-4">
+                <div className="p-3">
                   <SplmEmptyState
                     icon={Package}
                     title="No products yet"
@@ -614,25 +662,27 @@ export default function DashboardPanel() {
                   />
                 </div>
               ) : (
-                <ul className="divide-y divide-border/60">
+                <ul className="divide-y divide-border/50">
                   {mergedTopProducts.map((row) => {
                     const full = products.find((p) => String(p.id) === row.id);
                     const barScore =
                       row.priorityScore > 0 ? row.priorityScore : Math.min(100, Math.round(row.chartScore));
                     return (
                       <li key={row.id}>
-                        <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <div className="grid grid-cols-1 items-center gap-2 px-3 py-2 sm:grid-cols-[1fr_6.5rem] sm:gap-3 sm:py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{row.displayName}</p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="truncate text-sm font-medium leading-tight text-foreground">{row.displayName}</p>
+                            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                               {full?.current_version ? `v${full.current_version}` : '—'}
                               <span className="mx-1">·</span>
-                              {full?.customer_count ?? '—'} customers
+                              {full?.customer_count ?? '—'} cust.
                               <span className="mx-1">·</span>
-                              {row.openTasks} open tasks
+                              {row.openTasks} open
                             </p>
                           </div>
-                          <PriorityBar score={barScore} />
+                          <div className="flex justify-start sm:justify-end">
+                            <PriorityBar score={barScore} width={72} />
+                          </div>
                         </div>
                       </li>
                     );
@@ -644,28 +694,30 @@ export default function DashboardPanel() {
         </Card>
       </section>
 
-      {/* focusAndSprintsRow: lg side-by-side — Product focus 5/12, Active sprints 7/12 (stacks <lg). Pie moves to next row when paired. */}
+      {/* Row 3 — product focus | active sprints: lg 6+6 so both read as primary peers */}
       {hasFocusSprintsPair && (
         <section
-          className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-stretch"
+          className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-stretch lg:gap-5"
           aria-label="Product focus and active sprints"
         >
-          <div className="flex min-h-0 min-w-0 lg:col-span-5">{renderProductFocusCard({ fillColumn: true })}</div>
-          <div className="flex min-h-0 min-w-0 lg:col-span-7">
-            {renderActiveSprintsCard('grid-cols-1 sm:grid-cols-2', true)}
-          </div>
+          <div className="flex min-h-0 min-w-0 lg:col-span-6">{renderProductFocusCard({ fillColumn: true })}</div>
+          <div className="flex min-h-0 min-w-0 lg:col-span-6">{renderActiveSprintsCard(true)}</div>
         </section>
       )}
 
       {hasFocusSprintsPair && taskDistribution.length > 0 && (
         <section className="w-full" aria-label="Task distribution">
-          <Card className="flex min-h-0 flex-col overflow-hidden border-border/80 bg-card shadow-splm">
-            <CardHeader className="shrink-0 space-y-1 pb-2">
-              <div className="flex items-center gap-2">
-                <PieChart className="h-4 w-4 text-muted-foreground" aria-hidden />
-                <CardTitle>Task distribution</CardTitle>
+          <Card className={cn(DASH_CARD, 'flex min-h-0 flex-col overflow-hidden')}>
+            <CardHeader className="shrink-0 space-y-0 pb-2 pt-4">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <PieChart className="h-4 w-4 text-muted-foreground" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base font-semibold tracking-tight">Task distribution</CardTitle>
+                  <CardDescription className="mt-0.5 text-xs">Open work by workflow state</CardDescription>
+                </div>
               </div>
-              <CardDescription>Open work by workflow state</CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
               <div className="w-full shrink-0" style={{ height: CHART_CARD_HEIGHT }}>
@@ -697,7 +749,7 @@ export default function DashboardPanel() {
       {!hasFocusSprintsPair && showChartsRow && (
         <section
           className={cn(
-            'grid w-full gap-6',
+            'grid w-full gap-4 md:gap-5',
             priorityChartRows.length > 0 && taskDistribution.length > 0
               ? 'grid-cols-1 md:grid-cols-2'
               : priorityChartRows.length > 0
@@ -708,13 +760,17 @@ export default function DashboardPanel() {
         >
           {renderProductFocusCard()}
           {taskDistribution.length > 0 && (
-            <Card className="flex min-h-0 flex-col overflow-hidden border-border/80 bg-card shadow-splm">
-              <CardHeader className="shrink-0 space-y-1 pb-2">
-                <div className="flex items-center gap-2">
-                  <PieChart className="h-4 w-4 text-muted-foreground" aria-hidden />
-                  <CardTitle>Task distribution</CardTitle>
+            <Card className={cn(DASH_CARD, 'flex min-h-0 flex-col overflow-hidden')}>
+              <CardHeader className="shrink-0 space-y-0 pb-2 pt-4">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <PieChart className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base font-semibold tracking-tight">Task distribution</CardTitle>
+                    <CardDescription className="mt-0.5 text-xs">Open work by workflow state</CardDescription>
+                  </div>
                 </div>
-                <CardDescription>Open work by workflow state</CardDescription>
               </CardHeader>
               <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
                 <div className="w-full shrink-0" style={{ height: CHART_CARD_HEIGHT }}>
@@ -745,58 +801,73 @@ export default function DashboardPanel() {
       )}
 
       {activeSprints.length > 0 && !hasFocusSprintsPair && (
-        <section aria-label="Active sprints">
-          {renderActiveSprintsCard('grid-cols-1 sm:grid-cols-2 lg:grid-cols-4', false)}
-        </section>
+        <section aria-label="Active sprints">{renderActiveSprintsCard(false)}</section>
       )}
 
-      {/* Team workload: cap vertical growth; scroll inside card (see module comment). */}
+      {/* Row 4 — team workload: height-capped + internal scroll; softer bar ramp (primary → amber → destructive). */}
       {workloadRows.length > 0 && (
         <section aria-label="Team workload">
-          <Card className="overflow-hidden">
-            <CardHeader className="space-y-1 pb-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" aria-hidden />
-                <CardTitle>Team workload</CardTitle>
+          <Card className={cn(DASH_CARD, 'overflow-hidden')}>
+            <CardHeader className="shrink-0 space-y-0 pb-2 pt-4">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Users className="h-4 w-4 text-muted-foreground" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base font-semibold tracking-tight">Team workload</CardTitle>
+                  <CardDescription className="mt-0.5 text-xs">
+                    Hours booked vs weekly capacity — scroll when the roster is long
+                  </CardDescription>
+                </div>
               </div>
-              <CardDescription>Active developers by hours vs weekly capacity — scroll if needed</CardDescription>
             </CardHeader>
-            <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
+            <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-4">
               <div
-                className="overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-muted/15 pr-1"
+                className="overflow-y-auto overscroll-contain rounded-md border border-border/50 bg-muted/10 pr-0.5 [scrollbar-gutter:stable]"
                 style={{ maxHeight: WORKLOAD_MAX_HEIGHT }}
               >
-                <ul className="divide-y divide-border/50">
+                <ul className="divide-y divide-border/40">
                   {workloadRows.map((d) => {
                     const load = Number(d.current_load_hours) || 0;
                     const cap = d.capacity_hours_week || 40;
                     const pct = Math.min(100, Math.round((load / cap) * 100));
-                    const barColor = pct >= 90 ? 'bg-destructive' : pct >= 70 ? 'bg-warning' : 'bg-success';
-                    const textColor = pct >= 90 ? 'text-destructive' : pct >= 70 ? 'text-warning' : 'text-success';
+                    const barColor =
+                      pct >= 95
+                        ? 'bg-destructive/75'
+                        : pct >= 85
+                          ? 'bg-destructive/45'
+                          : pct >= 70
+                            ? 'bg-amber-500/45 dark:bg-amber-400/35'
+                            : 'bg-primary/35 dark:bg-primary/30';
+                    const textColor =
+                      pct >= 95
+                        ? 'text-destructive'
+                        : pct >= 85
+                          ? 'text-destructive/90'
+                          : pct >= 70
+                            ? 'text-amber-700 dark:text-amber-300'
+                            : 'text-muted-foreground';
                     return (
                       <li key={d.id}>
-                        <div className="flex flex-col gap-1.5 px-2.5 py-2 sm:flex-row sm:items-center sm:gap-3 sm:py-1.5">
-                          <div className="w-full min-w-0 sm:w-36">
+                        <div className="grid grid-cols-1 items-center gap-1.5 px-2.5 py-1.5 sm:grid-cols-[minmax(0,7.5rem)_1fr_auto] sm:gap-3 sm:px-3 sm:py-1.5">
+                          <div className="min-w-0">
                             <p className="truncate text-xs font-semibold leading-tight text-foreground">{d.name}</p>
                             <p className="truncate text-[10px] capitalize text-muted-foreground">
                               {d.role} · {d.office_location}
                             </p>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="h-2 overflow-hidden rounded-full bg-muted">
+                          <div className="min-w-0">
+                            <div className="h-1.5 overflow-hidden rounded-full bg-muted/90">
                               <div
                                 className={cn('h-full rounded-full transition-all', barColor)}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
                           </div>
-                          <div
-                            className={cn(
-                              'shrink-0 text-right text-[11px] font-semibold tabular-nums sm:w-24',
-                              textColor,
-                            )}
-                          >
-                            {load}h / {cap}h
+                          <div className="shrink-0 text-right text-[11px] font-medium tabular-nums sm:min-w-[4.5rem]">
+                            <span className={textColor}>
+                              {load}h/{cap}h
+                            </span>
                             <span className="ml-1 font-normal text-muted-foreground">({pct}%)</span>
                           </div>
                         </div>
@@ -810,25 +881,49 @@ export default function DashboardPanel() {
         </section>
       )}
 
-      {/* Summary strip: compact secondary KPIs */}
+      {/* Row 5 — secondary KPI strip: same grid rhythm as row 1, lighter visual weight than hero KPIs */}
       <section aria-label="Summary metrics">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           {[
-            { label: 'Avg priority score', value: Math.round(s.avg_priority || 0), suffix: '/100' },
-            { label: 'Overdue tasks', value: s.overdue_tasks || 0, suffix: 'tasks' },
-            { label: 'Developers active', value: s.developers || 0, suffix: 'engineers' },
-          ].map((m) => (
-            <Card key={m.label} className="flex min-h-[5.5rem] flex-col transition-shadow hover:shadow-splm-md">
-              <CardContent className="flex flex-1 flex-col justify-center p-4 sm:p-5">
+            {
+              label: 'Avg priority score',
+              value: Math.round(s.avg_priority || 0),
+              suffix: '/100',
+              icon: BarChart3,
+              tint: 'bg-primary/8 text-primary ring-1 ring-primary/10',
+            },
+            {
+              label: 'Overdue tasks',
+              value: s.overdue_tasks || 0,
+              suffix: 'tasks',
+              icon: ListTodo,
+              tint: 'bg-destructive/8 text-destructive ring-1 ring-destructive/10',
+            },
+            {
+              label: 'Developers active',
+              value: s.developers || 0,
+              suffix: 'engineers',
+              icon: Users,
+              tint: 'bg-teal-bg text-teal ring-1 ring-teal/15',
+            },
+          ].map(({ label, value, suffix, icon: MetricIcon, tint }) => (
+            <Card
+              key={label}
+              className={cn(
+                DASH_CARD,
+                'flex min-h-[5.25rem] flex-col overflow-hidden transition-shadow hover:shadow-md',
+              )}
+            >
+              <CardContent className="flex flex-1 flex-col justify-center p-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <Activity className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tint)}>
+                    <MetricIcon className="h-4 w-4" strokeWidth={1.7} aria-hidden />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{m.label}</p>
-                    <p className="mt-0.5 text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
-                      {m.value}
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">{m.suffix}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+                    <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight text-foreground sm:text-2xl">
+                      {value}
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">{suffix}</span>
                     </p>
                   </div>
                 </div>

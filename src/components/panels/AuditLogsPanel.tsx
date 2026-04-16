@@ -26,6 +26,9 @@ import {
 } from '@/components/ui/table';
 import { AuditLogUserSelect } from '@/components/forms/AuditLogUserSelect';
 import { SearchableSelect } from '@/components/forms/SearchableSelect';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
+import { Card } from '@/components/ui/card';
+import { ListPaginationBar } from '@/components/listing/listPageSearch';
 
 const MODULE_PRESETS = [
   '',
@@ -226,8 +229,17 @@ export default function AuditLogsPanel() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="splm-filter-shell sticky top-0 z-10 -mx-0 space-y-4 p-4 sm:p-5">
+    <div className="flex min-h-0 min-w-0 flex-col space-y-6">
+      <SplmPageHeader
+        title="Audit logs"
+        subtitle="Administrative actions across modules. Apply filters, then scroll the table — pagination stays aligned with the grid below."
+      />
+
+      {/*
+        Root cause of awkward scroll: sticky filters + table each in their own overflow stacks fought the shell.
+        Filters stay in a normal flow card (no sticky) so only the main area scrolls; table + pager share one card.
+      */}
+      <div className="splm-filter-shell space-y-4 rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-end gap-3">
           <div className="grid min-w-[140px] gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Module</label>
@@ -360,9 +372,8 @@ export default function AuditLogsPanel() {
       )}
 
       {!loading && !error && items.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-splm">
-          <div className="overflow-x-auto">
-          <Table>
+        <Card className="flex min-w-0 flex-col overflow-hidden border-border/80 shadow-splm">
+          <Table wrapperClassName="overflow-x-auto overflow-y-visible">
             <TableHeader>
               <TableRow>
                 <TableHead className="whitespace-nowrap">When (UTC)</TableHead>
@@ -415,42 +426,16 @@ export default function AuditLogsPanel() {
               ))}
             </TableBody>
           </Table>
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && total > 0 && (
-        <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing <span className="font-semibold text-foreground">{(page - 1) * pageSize + 1}</span>
-            –
-            <span className="font-semibold text-foreground">{Math.min(page * pageSize, total)}</span>
-            {' '}of <span className="font-semibold text-foreground">{total}</span>
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              Page {page} / {totalPages}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
+        </Card>
       )}
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>

@@ -16,6 +16,12 @@ export type ListPaginationBarProps = {
   onPageChange: (p: number) => void;
   disabled?: boolean;
   className?: string;
+  /**
+   * `inset`: footer inside a listing card — same horizontal padding as `Table` cells (`px-4`), no extra top margin,
+   * so the bar lines up with table content (fixes “floating” pagination vs table width).
+   * `standalone`: default spacing when pagination sits below a loose block.
+   */
+  variant?: 'standalone' | 'inset';
 };
 
 /** Prev/next + range summary; hides when there is nothing to show. */
@@ -27,6 +33,7 @@ export function ListPaginationBar({
   onPageChange,
   disabled,
   className,
+  variant = 'standalone',
 }: ListPaginationBarProps) {
   if (totalItems === 0) return null;
   const safeTotalPages = Math.max(1, totalPages);
@@ -36,7 +43,9 @@ export function ListPaginationBar({
   return (
     <div
       className={cn(
-        'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 pt-3 border-t text-sm text-muted-foreground',
+        'flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between',
+        variant === 'standalone' && 'mt-4 border-t border-border/80 pt-3',
+        variant === 'inset' && 'border-t border-border/80 bg-muted/25 px-4 py-3',
         className,
       )}
     >

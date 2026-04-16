@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { listTasksPage, saveTask, deleteTask, listProductsPage, listDevelopers, updateTaskStatus } from '@/lib/api';
 import { listSprints } from '@/lib/api-sprints';
 import { DEFAULT_LIST_PAGE_SIZE, ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -231,7 +232,7 @@ export default function TasksPanel() {
   );
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
       {selectedTask && (
         <TaskDetailDrawer
           task={selectedTask}
@@ -246,41 +247,73 @@ export default function TasksPanel() {
           }}
         />
       )}
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">
-            ✅ Tasks
-            <span className="text-muted-foreground font-normal text-sm ml-2">
-              ({tasks.length} of {taskTotalCount.toLocaleString()})
-            </span>
-          </h3>
-          <div className="flex gap-2 flex-wrap items-center">
-            {/* View toggle */}
+      <SplmPageHeader
+        title="Tasks"
+        subtitle="Triage work in list or board view. Filter by status, product, and search."
+        actions={
+          <>
             <div className="flex border rounded-md overflow-hidden">
-              <button onClick={() => toggleView('list')}
-                className={cn('px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
-                  viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+              <button
+                type="button"
+                onClick={() => toggleView('list')}
+                className={cn(
+                  'px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
+                  viewMode === 'list'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
                 <List className="w-3.5 h-3.5" /> List
               </button>
-              <button onClick={() => toggleView('kanban')}
-                className={cn('px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
-                  viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+              <button
+                type="button"
+                onClick={() => toggleView('kanban')}
+                className={cn(
+                  'px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
+                  viewMode === 'kanban'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
                 <LayoutGrid className="w-3.5 h-3.5" /> Board
               </button>
             </div>
-            <ListPageSearchInput value={searchQ} onChange={setSearchQ} className="w-36 sm:w-44" />
-            <SearchableSelect className="min-w-[10rem] max-w-[12rem]" size="sm" triggerClassName="w-full" options={taskStatusOptions} value={fS} onValueChange={setFS} placeholder="All Statuses" searchPlaceholder="Search status…" />
-            <SearchableSelect className="min-w-[10rem] max-w-[14rem]" size="sm" triggerClassName="w-full" options={filterProductOptions} value={fP} onValueChange={setFP} placeholder="All Products" searchPlaceholder="Search products…" contentWidth="wide" />
             {can('edit') && (
-              <Button
-                onClick={() =>
-                  refreshMetaThen(() => setForm({ ...blank }))
-                }
-              >
-                + New Task
-              </Button>
+              <Button onClick={() => refreshMetaThen(() => setForm({ ...blank }))}>+ New Task</Button>
             )}
-          </div>
+          </>
+        }
+      />
+      {/* Single listing card: filters + content + footer share width so pagination aligns with rows (inset bar). */}
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <ListPageSearchInput value={searchQ} onChange={setSearchQ} className="w-36 sm:w-44" />
+          <SearchableSelect
+            className="min-w-[10rem] max-w-[12rem]"
+            size="sm"
+            triggerClassName="w-full"
+            options={taskStatusOptions}
+            value={fS}
+            onValueChange={setFS}
+            placeholder="All Statuses"
+            searchPlaceholder="Search status…"
+          />
+          <SearchableSelect
+            className="min-w-[10rem] max-w-[14rem]"
+            size="sm"
+            triggerClassName="w-full"
+            options={filterProductOptions}
+            value={fP}
+            onValueChange={setFP}
+            placeholder="All Products"
+            searchPlaceholder="Search products…"
+            contentWidth="wide"
+          />
+          {!loading && taskTotalCount > 0 && (
+            <span className="text-xs text-muted-foreground sm:ml-auto tabular-nums">
+              {tasks.length} of {taskTotalCount.toLocaleString()} on this page
+            </span>
+          )}
         </div>
         {loading ? <TableSkeleton /> :
           tasks.length === 0 ? (
@@ -361,6 +394,7 @@ export default function TasksPanel() {
         }
         {!loading && viewMode === 'list' && taskTotalCount > 0 && (
           <ListPaginationBar
+            variant="inset"
             page={taskPage}
             totalPages={listTotalPages}
             totalItems={taskTotalCount}
@@ -370,13 +404,13 @@ export default function TasksPanel() {
           />
         )}
         {!loading && viewMode === 'list' && taskTotalCount > DEFAULT_LIST_PAGE_SIZE && (
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="border-t border-border/80 bg-muted/10 px-4 py-2 text-xs text-muted-foreground">
             List shows {DEFAULT_LIST_PAGE_SIZE} tasks per page. Use filters to narrow results.
           </p>
         )}
         {!loading && viewMode === 'kanban' && taskTotalCount > 0 && (
           <ListPaginationBar
-            className="mt-4"
+            variant="inset"
             page={boardPage}
             totalPages={boardTotalPages}
             totalItems={taskTotalCount}
@@ -386,7 +420,7 @@ export default function TasksPanel() {
           />
         )}
         {!loading && viewMode === 'kanban' && taskTotalCount > BOARD_PAGE_SIZE && (
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="border-t border-border/80 bg-muted/10 px-4 py-2 text-xs text-muted-foreground">
             Board shows {BOARD_PAGE_SIZE} tasks per page across all columns. Use pagination or filters to see the rest.
           </p>
         )}

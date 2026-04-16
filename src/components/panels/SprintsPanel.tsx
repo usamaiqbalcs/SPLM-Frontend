@@ -8,6 +8,7 @@ import {
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -207,7 +208,7 @@ export default function SprintsPanel() {
   );
 
   return (
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-5">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}
@@ -234,11 +235,16 @@ export default function SprintsPanel() {
         </div>
       )}
 
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">
-            🏃 Sprints ({debouncedListSearch ? `${filteredSprints.length} / ${sprints.length}` : sprints.length})
-          </h3>
+      <SplmPageHeader
+        title="Sprints"
+        subtitle="Plan iterations, assign backlog work, and review velocity across the team."
+      />
+
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {debouncedListSearch ? `${filteredSprints.length} of ${sprints.length} match` : `${sprints.length} sprint${sprints.length === 1 ? '' : 's'}`}
+          </span>
           <div className="flex items-center gap-2 flex-wrap">
             <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-36 sm:w-44" />
             {can('edit') && <Button onClick={() => setForm({ ...blank })}>+ New Sprint</Button>}
@@ -402,7 +408,7 @@ export default function SprintsPanel() {
         }
         {!loading && filteredSprints.length > 0 && (
           <ListPaginationBar
-            className="mt-4"
+            variant="inset"
             page={sprintPage}
             totalPages={sprintTotalPages}
             totalItems={filteredSprints.length}

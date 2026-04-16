@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listFeedbackPage, saveFeedback, deleteFeedback, listProductsForDropdown } from '@/lib/api';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -201,7 +202,7 @@ export default function FeedbackPanel() {
 
   // ── Main view ──────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-4">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={o => !o && setDeleteId(null)}
@@ -210,6 +211,12 @@ export default function FeedbackPanel() {
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={doDelete}
+      />
+
+      <SplmPageHeader
+        title="Feedback"
+        subtitle="Signals from support, logs, sales, and research — filtered by product, channel, and sentiment."
+        actions={<Button onClick={() => setForm({ ...blank })}>+ Log feedback</Button>}
       />
 
       {/* ── Stats row ── */}
@@ -253,9 +260,9 @@ export default function FeedbackPanel() {
         </div>
       )}
 
-      {/* ── Filters + actions ── */}
-      <div className="bg-card rounded-lg border p-4">
-        <div className="flex flex-wrap gap-2 items-center justify-between">
+      {/* ── Filters + list (inset pagination matches card width). ── */}
+      <div className="rounded-lg border border-border/80 bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             <ListPageSearchInput
               className="w-44 h-9 text-sm"
@@ -273,7 +280,6 @@ export default function FeedbackPanel() {
               </Button>
             )}
           </div>
-          <Button onClick={() => setForm({ ...blank })}>+ Log Feedback</Button>
         </div>
 
         {/* ── List ── */}
@@ -333,21 +339,16 @@ export default function FeedbackPanel() {
             )
           }
         </div>
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-              {totalCount > 0 && <span className="ml-2">({items.length} of {totalCount.toLocaleString()} shown)</span>}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

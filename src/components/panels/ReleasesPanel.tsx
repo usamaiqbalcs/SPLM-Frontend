@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listReleasesPage, saveRelease, deleteRelease, listProductsForDropdown } from '@/lib/api';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -273,7 +274,7 @@ export default function ReleasesPanel() {
 
   // ── Main view ──────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-4">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={o => !o && setDeleteId(null)}
@@ -319,20 +320,31 @@ export default function ReleasesPanel() {
         ))}
       </div>
 
+      <SplmPageHeader
+        title="Releases"
+        subtitle="Version bundles, checklists, and target dates — click a stat card above to filter by status."
+        actions={
+          can('release') ? (
+            <Button type="button" onClick={() => setForm({ ...blank })}>
+              + New release
+            </Button>
+          ) : undefined
+        }
+      />
+
       {/* ── List ── */}
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary flex items-center gap-2">
-            <PackageCheck className="w-5 h-5" />
-            Releases ({totalCount.toLocaleString()})
-          </h3>
-          <div className="flex gap-2 flex-wrap items-center">
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {totalCount.toLocaleString()} total
+            {statusF ? ` · filtered: ${statusF.replace(/_/g, ' ')}` : ''}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
             <ListPageSearchInput value={search} onChange={setSearch} className="w-40 sm:w-48" />
             {statusF && (
-              <Button variant="ghost" size="sm" onClick={() => { setPage(1); setStatusF(''); }}>Clear filter</Button>
-            )}
-            {can('release') && (
-              <Button onClick={() => setForm({ ...blank })}>+ New Release</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setPage(1); setStatusF(''); }}>
+                Clear filter
+              </Button>
             )}
           </div>
         </div>
@@ -418,14 +430,16 @@ export default function ReleasesPanel() {
             </div>
           )
         }
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-            </div>
-          </div>
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

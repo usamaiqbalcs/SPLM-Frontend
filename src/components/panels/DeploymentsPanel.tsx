@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listDeploymentsPage, createDeployment, updateDeploymentStatus, listProductsForDropdown } from '@/lib/api';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -167,7 +168,7 @@ export default function DeploymentsPanel() {
   );
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
       <PromptDialog
         open={!!failTarget}
         onOpenChange={(o) => !o && setFailTarget(null)}
@@ -177,16 +178,49 @@ export default function DeploymentsPanel() {
         confirmLabel="Mark Failed"
         onConfirm={doFail}
       />
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">
-            🚀 Deployments ({totalCount.toLocaleString()})
-          </h3>
-          <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <SplmPageHeader
+        title="Deployments"
+        subtitle="Queued builds through production — advance stages, capture failures, and filter by environment."
+        actions={
+          can('deploy') ? (
+            <Button type="button" onClick={() => setForm({ ...blank })}>
+              + New deployment
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">{totalCount.toLocaleString()} total</span>
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <ListPageSearchInput value={search} onChange={setSearch} className="w-full min-w-0 sm:w-44" />
-            <SearchableSelect className="w-full min-w-0 sm:w-[11rem]" size="sm" triggerClassName="w-full" options={envFilterOptions} value={envF} onValueChange={(v) => { setPage(1); setEnvF(v); }} placeholder="All Environments" searchPlaceholder="Search environment…" />
-            <SearchableSelect className="w-full min-w-0 sm:w-[11rem]" size="sm" triggerClassName="w-full" options={deployStatusFilterOptions} value={statusF} onValueChange={(v) => { setPage(1); setStatusF(v); }} placeholder="All Statuses" searchPlaceholder="Search status…" />
-            {can('deploy') && <Button className="w-full shrink-0 sm:w-auto" onClick={() => setForm({ ...blank })}>+ New Deployment</Button>}
+            <SearchableSelect
+              className="w-full min-w-0 sm:w-[11rem]"
+              size="sm"
+              triggerClassName="w-full"
+              options={envFilterOptions}
+              value={envF}
+              onValueChange={(v) => {
+                setPage(1);
+                setEnvF(v);
+              }}
+              placeholder="All Environments"
+              searchPlaceholder="Search environment…"
+            />
+            <SearchableSelect
+              className="w-full min-w-0 sm:w-[11rem]"
+              size="sm"
+              triggerClassName="w-full"
+              options={deployStatusFilterOptions}
+              value={statusF}
+              onValueChange={(v) => {
+                setPage(1);
+                setStatusF(v);
+              }}
+              placeholder="All Statuses"
+              searchPlaceholder="Search status…"
+            />
           </div>
         </div>
         {loading ? <TableSkeleton /> :
@@ -235,14 +269,16 @@ export default function DeploymentsPanel() {
               })}
             </div>
         }
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-            </div>
-          </div>
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listResearchPage, saveResearch, deleteResearch, listProductsForDropdown } from '@/lib/api';
 import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -255,7 +256,7 @@ export default function ResearchPanel() {
 
   // ── Main view ──────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-4">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={o => !o && setDeleteId(null)}
@@ -264,6 +265,11 @@ export default function ResearchPanel() {
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={doDelete}
+      />
+
+      <SplmPageHeader
+        title="Research"
+        subtitle="Capture competitive intelligence, sources, and urgency — with optional AI analysis when expanded."
       />
 
       {/* ── Stats row ── */}
@@ -295,9 +301,9 @@ export default function ResearchPanel() {
         })}
       </div>
 
-      {/* ── Filters + list ── */}
-      <div className="bg-card rounded-lg border p-4">
-        <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
+      {/* ── Filters + list (one card: footer bar aligns with list rows via inset pagination). ── */}
+      <div className="rounded-lg border border-border/80 bg-card p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             <ListPageSearchInput
               className="w-48 h-9 text-sm"
@@ -391,6 +397,7 @@ export default function ResearchPanel() {
         }
         {!loading && totalCount > 0 && (
           <ListPaginationBar
+            variant="inset"
             page={page}
             totalPages={totalPages}
             totalItems={totalCount}

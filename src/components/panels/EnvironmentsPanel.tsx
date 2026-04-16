@@ -14,6 +14,7 @@ import {
   rowMatchesListSearch,
   useListPageSearchDebounce,
 } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -485,14 +486,17 @@ export default function EnvironmentsPanel() {
     );
 
   return (
-    <div className="animate-fade-in">
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
-          <h3 className="text-lg font-bold text-primary">
-            🌐 Environment Registry (
-            {debouncedListSearch ? `${filteredEnvs.length} / ${envs.length}` : envs.length})
-          </h3>
-          <div className="flex items-center gap-2 flex-wrap">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
+      <SplmPageHeader
+        title="Environment registry"
+        subtitle="Define dev, staging, and production targets — hosts, deploy methods, and product linkage."
+      />
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {debouncedListSearch ? `${filteredEnvs.length} of ${envs.length} match` : `${envs.length} environment${envs.length === 1 ? '' : 's'}`}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
             <ListPageSearchInput value={listSearch} onChange={setListSearch} className="w-40 sm:w-48" />
             {can('config') && (
               <Button onClick={openNewConfigure}>+ Configure Environment</Button>
@@ -578,7 +582,7 @@ export default function EnvironmentsPanel() {
         )}
         {!loading && filteredEnvs.length > 0 && (
           <ListPaginationBar
-            className="mt-4"
+            variant="inset"
             page={envPage}
             totalPages={envTotalPages}
             totalItems={filteredEnvs.length}

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { listDevelopersPage, saveDeveloper, deleteDeveloper } from '@/lib/api';
-import { ListPageSearchInput, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -106,7 +107,7 @@ export default function DevelopersPanel() {
   );
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in min-h-0 min-w-0 space-y-0">
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}
@@ -116,25 +117,26 @@ export default function DevelopersPanel() {
         variant="destructive"
         onConfirm={doDelete}
       />
-      <div className="bg-card rounded-lg border p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-primary">
-            👩‍💻 Team
-            <span className="text-muted-foreground font-normal text-sm ml-2">
-              {loading ? (
-                <span className="inline-block min-w-[7rem] animate-pulse">…</span>
-              ) : totalCount === 0 ? (
-                '(0 members)'
-              ) : (
-                <>
-                  (Showing {(page - 1) * pageSize + 1}–{(page - 1) * pageSize + items.length} of{' '}
-                  {totalCount.toLocaleString()})
-                </>
-              )}
-            </span>
-          </h3>
+      <SplmPageHeader
+        title="Team"
+        subtitle="Developer roster, capacity, and skills — used for assignments and load visibility."
+        actions={can('users') ? <Button onClick={() => setForm({ ...blank })}>+ Add developer</Button> : undefined}
+      />
+
+      <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {loading ? (
+              <span className="inline-block min-w-[7rem] animate-pulse">…</span>
+            ) : totalCount === 0 ? (
+              '0 members'
+            ) : (
+              <>
+                Showing {(page - 1) * pageSize + 1}–{(page - 1) * pageSize + items.length} of {totalCount.toLocaleString()}
+              </>
+            )}
+          </span>
           <ListPageSearchInput value={search} onChange={setSearch} className="w-40 sm:w-48" />
-          {can('users') && <Button onClick={() => setForm({ ...blank })}>+ Add Developer</Button>}
         </div>
         {loading ? <GridCardSkeleton count={3} /> :
           items.length === 0 ? (
@@ -202,20 +204,16 @@ export default function DevelopersPanel() {
               })}
             </div>
         }
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
+        {!loading && totalCount > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

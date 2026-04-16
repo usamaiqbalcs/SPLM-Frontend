@@ -26,6 +26,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { SearchableSelect } from '@/components/forms/SearchableSelect';
+import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
+import { ListPaginationBar } from '@/components/listing/listPageSearch';
 
 const ROLE_OPTIONS = [SplmRoles.Admin, SplmRoles.Manager, SplmRoles.Developer, SplmRoles.Viewer];
 const APP_ROLE_SELECT_OPTIONS = ROLE_OPTIONS.map((r) => ({ value: r, label: r }));
@@ -147,10 +149,20 @@ export default function AdminUsersPanel() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border bg-card/95 p-4 shadow-sm">
+    <div className="min-h-0 min-w-0 space-y-4">
+      <SplmPageHeader
+        title="Users"
+        subtitle="Search accounts, assign application roles, activate or deactivate access, and send password resets."
+        actions={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            + Create user
+          </Button>
+        }
+      />
+
+      <div className="rounded-lg border border-border/80 bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1 min-w-[200px]">
+          <div className="grid min-w-[200px] gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               Search
             </label>
@@ -165,9 +177,6 @@ export default function AdminUsersPanel() {
             Search
           </Button>
         </div>
-        <Button type="button" onClick={() => setCreateOpen(true)}>
-          + Create user
-        </Button>
       </div>
 
       {error && (
@@ -176,8 +185,9 @@ export default function AdminUsersPanel() {
         </div>
       )}
 
-      <div className="rounded-lg border">
-        <Table>
+      {/* Table + footer in one bordered shell so pagination lines up with columns (same root cause as other admin lists). */}
+      <div className="overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm">
+        <Table wrapperClassName="overflow-x-auto overflow-y-visible">
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
@@ -251,32 +261,17 @@ export default function AdminUsersPanel() {
             )}
           </TableBody>
         </Table>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span>
-          Page {page} of {totalPages} — {total} user{total === 1 ? '' : 's'}
-        </span>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages || loading}
-            onClick={() => setPage(p => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
+        {!loading && total > 0 && (
+          <ListPaginationBar
+            variant="inset"
+            page={page}
+            totalPages={totalPages}
+            totalItems={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            disabled={loading}
+          />
+        )}
       </div>
 
       <Dialog open={resetTarget !== null} onOpenChange={open => !open && setResetTarget(null)}>
