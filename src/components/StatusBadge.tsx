@@ -57,13 +57,15 @@ export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full font-semibold uppercase tracking-wider',
-        colors.bg, colors.text,
-        size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-3 py-1 text-xs',
-        className
+        'inline-flex max-w-full items-center gap-1 rounded-full border border-black/[0.06] font-semibold uppercase tracking-wide dark:border-white/10',
+        colors.bg,
+        colors.text,
+        size === 'sm' ? 'px-2 py-0.5 text-[10px] leading-tight' : 'px-3 py-1 text-xs',
+        className,
       )}
+      title={(status || '').replace(/_/g, ' ')}
     >
-      {(status || '').replace(/_/g, ' ')}
+      <span className="truncate">{(status || '').replace(/_/g, ' ')}</span>
     </span>
   );
 }

@@ -1,6 +1,7 @@
 /**
  * Maps between sidebar “tab” ids (used in nav state) and URL path segments under AppLayout.
- * When adding a new panel: add both directions here and add the <Route> in App.tsx.
+ * When adding a new panel: register the tab, segment, and permission in `config/splm-navigation.ts`,
+ * add directions here if ids differ, add `<Route>` in App.tsx, and add an icon in `config/splm-nav-icons.ts`.
  */
 
 const TAB_TO_SEGMENT: Record<string, string> = {

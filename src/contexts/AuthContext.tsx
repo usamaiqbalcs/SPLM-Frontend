@@ -16,7 +16,6 @@ import {
   saveRefreshToken,
   tryRefreshAccessToken,
 } from '@/lib/token-lifecycle';
-import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
@@ -92,7 +91,6 @@ async function authFetch<T>(path: string, init: RequestInit = {}, token?: string
         typeof body?.message === 'string' && body.message.trim()
           ? String(body.message).trim()
           : 'You do not have permission to perform this action.';
-      toast.error(friendly);
       throw new Error(friendly);
     }
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
@@ -124,7 +122,6 @@ async function fetchMe(token: string): Promise<MeResponse> {
         typeof body?.message === 'string' && body.message.trim()
           ? String(body.message).trim()
           : 'You do not have permission to perform this action.';
-      toast.error(friendly);
       const err = new Error(friendly);
       (err as Error & { status?: number }).status = res.status;
       throw err;

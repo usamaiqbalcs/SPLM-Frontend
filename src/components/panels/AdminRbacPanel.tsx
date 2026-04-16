@@ -9,6 +9,7 @@ import {
   type RbacRoleRowDto,
 } from '@/lib/apiClient';
 import { SplmPermissions } from '@/constants/splm-rbac';
+import { splmPermissionDescription, splmPermissionTitle } from '@/config/splm-permission-ui';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -19,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Card } from '@/components/ui/card';
 
 /** Rows = permissions, columns = roles — matches backend matrix DTO. */
 export default function AdminRbacPanel() {
@@ -132,16 +134,15 @@ export default function AdminRbacPanel() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Role permissions</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Edit which permissions each application role has. Only administrators may save changes. The server remains
-          authoritative for API access.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+        Edit which permissions each application role has. Labels below match sidebar modules (see{' '}
+        <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-navigation.ts</code> and{' '}
+        <code className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono">config/splm-permission-ui.ts</code>). The
+        server remains authoritative for API access.
+      </p>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={() => void saveAll()} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save changes'}
         </Button>
@@ -150,45 +151,54 @@ export default function AdminRbacPanel() {
         </Button>
       </div>
 
-      <div className="rounded-md border overflow-x-auto">
+      <Card className="overflow-hidden p-0 shadow-splm">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[180px] sticky left-0 bg-background z-[1]">Permission</TableHead>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="sticky left-0 z-20 min-w-[220px] bg-card shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                Permission
+              </TableHead>
               {roles.map((r: RbacRoleRowDto) => (
-                <TableHead key={r.name} className="text-center min-w-[100px] capitalize">
+                <TableHead key={r.name} className="min-w-[104px] text-center capitalize">
                   {r.display_name ?? r.name}
                 </TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {permissions.map((p: RbacPermissionRowDto) => (
-              <TableRow key={p.name}>
-                <TableCell className="font-medium sticky left-0 bg-background z-[1]">
-                  <div>{p.name}</div>
-                  {p.description ? (
-                    <div className="text-xs text-muted-foreground font-normal">{p.description}</div>
-                  ) : null}
-                </TableCell>
-                {roles.map((r: RbacRoleRowDto) => {
-                  const set = draft[r.name] ?? new Set();
-                  const checked = set.has(p.name);
-                  return (
-                    <TableCell key={`${r.name}-${p.name}`} className="text-center">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => toggle(r.name, p.name, v === true)}
-                        aria-label={`${r.name} ${p.name}`}
-                      />
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))}
+            {permissions.map((p: RbacPermissionRowDto) => {
+              const permDesc = splmPermissionDescription(p.name, p.description);
+              const permTitle = splmPermissionTitle(p.name);
+              return (
+                <TableRow key={p.name}>
+                  <TableCell className="sticky left-0 z-10 min-w-[220px] bg-card font-medium shadow-[4px_0_12px_-4px_rgba(15,23,42,0.08)]">
+                    <div>{permTitle}</div>
+                    <div className="text-[11px] font-mono text-muted-foreground/90 font-normal">{p.name}</div>
+                    {permDesc ? (
+                      <div className="text-xs text-muted-foreground font-normal mt-0.5">{permDesc}</div>
+                    ) : null}
+                  </TableCell>
+                  {roles.map((r: RbacRoleRowDto) => {
+                    const set = draft[r.name] ?? new Set();
+                    const checked = set.has(p.name);
+                    return (
+                      <TableCell key={`${r.name}-${p.name}`} className="text-center">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggle(r.name, p.name, v === true)}
+                          aria-label={`${r.display_name ?? r.name}: ${permTitle} (${p.name})`}
+                        />
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }

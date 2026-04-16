@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ComponentType } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import GlobalSearchBar from '@/components/GlobalSearchBar';
@@ -7,145 +7,73 @@ import HelpModal from '@/components/HelpModal';
 import { pathToTab, tabToRouteSegment } from '@/lib/splm-routes';
 import { SplmPage } from '@/components/layout/SplmPage';
 import { cn } from '@/lib/utils';
-import {
-  LayoutDashboard, Package, CheckSquare, ListTodo, Users, MessageSquare,
-  Microscope, GitBranch, Rocket, Globe, CalendarCheck, LogOut, ChevronDown,
-  Bell, HelpCircle, Moon, Sun, Clock, PanelLeftClose, PanelLeft, Gauge, BookOpen,
-  GitMerge, FlaskConical, Bot, ClipboardCheck, BadgeCheck, Library, BarChart3,
-  Menu, Activity, ScrollText, UserCog, Shield,
-} from 'lucide-react';
+import { LogOut, ChevronDown, Bell, HelpCircle, Moon, Sun, Clock, PanelLeftClose, PanelLeft, Menu } from 'lucide-react';
+import { SPLM_NAV_SECTIONS, SPLM_PAGE_TITLES } from '@/config/splm-navigation';
+import { SPLM_NAV_TAB_ICONS } from '@/config/splm-nav-icons';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useSessionTimer } from '@/hooks/useSessionTimer';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
-type NavItem = { id: string; label: string; icon: any; permission?: string; adminOnly?: boolean };
+type NavItem = { id: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string };
 type NavGroup = { label: string; items: NavItem[] };
+type GroupOpenMap = Record<string, boolean>;
 
-const navGroups: NavGroup[] = [
-  {
-    label: 'Overview',
-    items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'queue', label: 'My Queue', icon: ListTodo },
-    ],
-  },
-  {
-    label: 'Product Management',
-    items: [
-      { id: 'products', label: 'Products', icon: Package, permission: 'edit' },
-      { id: 'tasks', label: 'Tasks', icon: CheckSquare, permission: 'edit' },
-      { id: 'sprints', label: 'Sprints', icon: Gauge, permission: 'edit' },
-      { id: 'versions', label: 'Versions', icon: GitBranch },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { id: 'feedback', label: 'Feedback', icon: MessageSquare },
-      { id: 'research', label: 'Research', icon: Microscope, permission: 'edit' },
-      { id: 'wiki', label: 'Wiki', icon: BookOpen },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { id: 'deployments', label: 'Deployments', icon: Rocket },
-      { id: 'environments', label: 'Environments', icon: Globe, permission: 'config' },
-      { id: 'releases', label: 'Releases', icon: CalendarCheck },
-    ],
-  },
-  {
-    label: 'AI-SDLC Pipeline',
-    items: [
-      { id: 'ai-overview',   label: 'AI-SDLC Overview',  icon: Activity,       permission: 'edit' },
-      { id: 'workflow',      label: 'Workflow Pipeline', icon: GitMerge,       permission: 'edit' },
-      { id: 'qa-cycles',     label: 'QA Cycles',         icon: FlaskConical,   permission: 'edit' },
-      { id: 'ai-analyzer',  label: 'AI Analyzer',        icon: Bot,            permission: 'edit' },
-      { id: 'fix-review',   label: 'Fix Review',         icon: ClipboardCheck, permission: 'edit' },
-      { id: 'canary',       label: 'Canary Deployments', icon: Rocket,         permission: 'edit' },
-    ],
-  },
-  {
-    label: 'Sign-Offs & Approvals',
-    items: [
-      { id: 'pm-signoff',   label: 'PM Sign-Off',       icon: ClipboardCheck, permission: 'edit' },
-      { id: 'pdm-signoff',  label: 'PDM Acceptance',    icon: BadgeCheck,     permission: 'edit' },
-    ],
-  },
-  {
-    label: 'Insights',
-    items: [
-      { id: 'prompt-library', label: 'Prompt Library',  icon: Library,        permission: 'edit' },
-      { id: 'kpi-dashboard',  label: 'KPI Dashboard',   icon: BarChart3 },
-    ],
-  },
-  {
-    label: 'Administration',
-    items: [
-      { id: 'team', label: 'Team', icon: Users, permission: 'users' },
-      { id: 'user-management', label: 'Users & roles', icon: UserCog, permission: 'identity.manage' },
-      { id: 'rbac', label: 'Role permissions', icon: Shield, permission: 'identity.manage' },
-      { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText, permission: 'audit.read' },
-    ],
-  },
-];
-
-const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
-  dashboard:      { title: 'Dashboard',          subtitle: 'System overview & metrics' },
-  queue:          { title: 'My Queue',           subtitle: 'Your assigned work items' },
-  products:       { title: 'Products',           subtitle: 'Manage software products' },
-  tasks:          { title: 'Tasks',              subtitle: 'Task management & tracking' },
-  sprints:        { title: 'Sprints',            subtitle: 'Sprint planning & velocity' },
-  versions:       { title: 'Version Control',    subtitle: 'MAJOR.MINOR.CYCLE versioning' },
-  feedback:       { title: 'Feedback',           subtitle: 'Customer & stakeholder feedback' },
-  research:       { title: 'Research',           subtitle: 'Market & technology research' },
-  wiki:           { title: 'Wiki',               subtitle: 'Knowledge base & documentation' },
-  deployments:    { title: 'Deployments',        subtitle: 'Deployment pipeline & history' },
-  environments:   { title: 'Environments',       subtitle: 'Server configuration' },
-  releases:       { title: 'Releases',           subtitle: 'Release planning & checklists' },
-  team:           { title: 'Team',               subtitle: 'Developer management' },
-  'audit-logs':   { title: 'Audit Logs',         subtitle: 'Admin activity trail across modules' },
-  'user-management': { title: 'User management', subtitle: 'Accounts, app roles (profiles.role), and activation' },
-  rbac: { title: 'Role permissions', subtitle: 'Database-backed RBAC matrix (roles ↔ permissions)' },
-  // AI-SDLC
-  'ai-overview':  { title: 'AI-SDLC Overview',   subtitle: 'Unified pipeline health, QA, analyzer activity, and KPI trend' },
-  workflow:       { title: 'Workflow Pipeline',  subtitle: 'PM Build → Dev Handoff → QA Cycle → Acceptance → Production' },
-  'qa-cycles':    { title: 'QA Cycles',          subtitle: 'AI-assisted quality assurance cycle tracking' },
-  'ai-analyzer':  { title: 'AI Analyzer',        subtitle: 'Backend AI analyzer reports & git diff analysis' },
-  'fix-review':   { title: 'Fix Review',         subtitle: 'Developer Accept / Modify / Reject queue' },
-  'pm-signoff':   { title: 'PM Sign-Off',        subtitle: 'Product Manager build completion checklist' },
-  'pdm-signoff':  { title: 'PDM Acceptance',     subtitle: 'Business acceptance sign-off & production gate' },
-  'prompt-library': { title: 'Prompt Library',   subtitle: 'Versioned AI prompt repository' },
-  'kpi-dashboard':  { title: 'KPI Dashboard',    subtitle: 'AI-SDLC performance metrics & analytics' },
-  'canary':         { title: 'Canary Deployments', subtitle: 'Gradual rollout management with monitoring windows' },
-  search:           { title: 'Search',           subtitle: 'All modules' },
-};
+/** Sidebar structure from `config/splm-navigation.ts` + Lucide icons from `config/splm-nav-icons.ts`. */
+const navGroups: NavGroup[] = SPLM_NAV_SECTIONS.map((section) => ({
+  label: section.section,
+  items: section.items.map((def) => {
+    const Icon = SPLM_NAV_TAB_ICONS[def.tabId];
+    if (!Icon) {
+      throw new Error(`splm-nav-icons: missing icon for tab "${def.tabId}"`);
+    }
+    return {
+      id: def.tabId,
+      label: def.label,
+      icon: Icon,
+      permission: def.permission,
+    };
+  }),
+}));
 
 function CollapsibleGroup({
-  label, defaultOpen = false, collapsed = false, children,
+  label, open, onToggle, collapsed = false, children,
 }: {
-  label: string; defaultOpen?: boolean; collapsed?: boolean; children: React.ReactNode;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  collapsed?: boolean;
+  children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  if (collapsed) return <div className="mb-1">{children}</div>;
+  if (collapsed) return <div className="mb-2 space-y-0.5">{children}</div>;
   return (
-    <div className="mb-0.5">
+    <div className="mb-1">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 pt-2.5 pb-1 text-[9px] tracking-[2px] uppercase text-primary-foreground/25 font-semibold hover:text-primary-foreground/40 transition-colors cursor-pointer"
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        aria-expanded={open}
+        aria-label={`${label} section`}
+        className="group flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/45 transition-colors hover:bg-primary-foreground/5 hover:text-primary-foreground/70"
       >
-        {label}
-        <ChevronDown className={cn('w-3 h-3 transition-transform', open ? '' : '-rotate-90')} />
+        <span className="truncate">{label}</span>
+        <ChevronDown
+          className={cn('h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-200', open ? '' : '-rotate-90')}
+          aria-hidden
+        />
       </button>
-      {open && children}
+      {open && <div className="mt-0.5 space-y-0.5 pb-2">{children}</div>}
     </div>
   );
 }
 
 export default function AppLayout() {
-  const { profile, signOut, can, userRole, isAdmin } = useAuth();
+  const { profile, signOut, can, userRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => pathToTab(location.pathname));
@@ -184,6 +112,38 @@ export default function AppLayout() {
     setActiveTab(pathToTab(location.pathname));
   }, [location.pathname]);
 
+  const visibleNavGroups = useMemo(() => {
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => {
+          if (!item.permission) return true;
+          return can(item.permission);
+        }),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [can]);
+
+  const [openGroups, setOpenGroups] = useState<GroupOpenMap>(() =>
+    Object.fromEntries(navGroups.map((group) => [group.label, group.label === 'Overview'])),
+  );
+
+  const toggleGroup = useCallback((label: string) => {
+    /**
+     * Root cause/fix: submenu state was local to each group and derived from `defaultOpen`,
+     * so route/layout re-renders could desynchronize click intent from visual state.
+     * A centralized functional update makes first-click toggles deterministic.
+     */
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  }, []);
+
+  useEffect(() => {
+    // Keep the active route's group open after navigation.
+    const activeGroup = visibleNavGroups.find((group) => group.items.some((i) => i.id === activeTab));
+    if (!activeGroup) return;
+    setOpenGroups((prev) => (prev[activeGroup.label] ? prev : { ...prev, [activeGroup.label]: true }));
+  }, [activeTab, visibleNavGroups]);
+
   const toggleDark = () => {
     document.documentElement.classList.toggle('dark');
     setDarkMode(d => {
@@ -192,13 +152,7 @@ export default function AppLayout() {
     });
   };
 
-  const canSeeItem = (item: NavItem) => {
-    if (item.adminOnly && !isAdmin) return false;
-    if (!item.permission) return true;
-    return can(item.permission);
-  };
-
-  const pageMeta = PAGE_TITLES[activeTab] || { title: 'SPLM' };
+  const pageMeta = SPLM_PAGE_TITLES[activeTab] || { title: 'SPLM' };
   const initials = profile?.name
     ? profile.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
     : '?';
@@ -224,17 +178,17 @@ export default function AppLayout() {
           afterClick?.();
         }}
         className={cn(
-          'w-full flex items-center gap-2 py-[7px] rounded-[5px] text-xs font-medium transition-all relative cursor-pointer',
-          collapsed ? 'justify-center px-0 mx-0' : 'px-2.5 mx-1',
+          'relative flex w-full cursor-pointer items-center gap-3 rounded-lg py-2 text-[13px] font-medium transition-colors',
+          collapsed ? 'mx-0 justify-center px-0' : 'mx-1.5 px-3',
           isActive
-            ? 'bg-primary-foreground/15 text-primary-foreground shadow-sm'
-            : 'text-primary-foreground/50 hover:bg-primary-foreground/8 hover:text-primary-foreground/80',
+            ? 'bg-primary-foreground/12 text-primary-foreground shadow-inner ring-1 ring-primary-foreground/10'
+            : 'text-primary-foreground/60 hover:bg-primary-foreground/[0.07] hover:text-primary-foreground/95',
         )}
       >
         {isActive && !collapsed && (
-          <div className="absolute left-0 top-[3px] bottom-[3px] w-[3px] bg-sky rounded-r-sm" />
+          <div className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full bg-sky" aria-hidden />
         )}
-        <Icon className={cn('flex-shrink-0', collapsed ? 'w-5 h-5' : 'w-4 h-4')} />
+        <Icon className={cn('shrink-0 opacity-90', collapsed ? 'h-5 w-5' : 'h-[18px] w-[18px]')} />
         {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
       </button>
     );
@@ -279,15 +233,13 @@ export default function AppLayout() {
             </div>
           </div>
           <nav className="flex-1 overflow-y-auto px-1 pb-4 pt-2 scrollbar-thin">
-            {navGroups.map((group) => {
-              const visibleItems = group.items.filter(canSeeItem);
-              if (visibleItems.length === 0) return null;
+            {visibleNavGroups.map((group) => {
               return (
                 <div key={group.label} className="mb-3">
                   <div className="px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[2px] text-primary-foreground/35">
                     {group.label}
                   </div>
-                  {visibleItems.map((item) => (
+                  {group.items.map((item) => (
                     <NavButton
                       key={item.id}
                       item={item}
@@ -319,8 +271,8 @@ export default function AppLayout() {
       {/* ── Sidebar (tablet/desktop) ── */}
       <aside
         className={cn(
-          'relative z-10 hidden flex-shrink-0 flex-col overflow-hidden bg-primary shadow-lg transition-all duration-300 md:flex',
-          sidebarCollapsed ? 'w-[56px]' : 'w-[220px]',
+          'relative z-10 hidden flex-shrink-0 flex-col overflow-hidden border-r border-primary-foreground/10 bg-primary shadow-splm-md transition-all duration-300 md:flex',
+          sidebarCollapsed ? 'w-[60px]' : 'w-[248px]',
         )}
       >
         {/* Logo */}
@@ -376,19 +328,17 @@ export default function AppLayout() {
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto scrollbar-thin pb-2 px-1 mt-1">
-          {navGroups.map(group => {
-            const visibleItems = group.items.filter(canSeeItem);
-            if (visibleItems.length === 0) return null;
-            const hasActive = visibleItems.some(i => i.id === activeTab);
+        <nav className="mt-1 flex-1 overflow-y-auto px-1.5 pb-3 scrollbar-thin">
+          {visibleNavGroups.map(group => {
             return (
               <CollapsibleGroup
                 key={group.label}
                 label={group.label}
-                defaultOpen={hasActive || group.label === 'Overview'}
+                open={openGroups[group.label] ?? false}
+                onToggle={() => toggleGroup(group.label)}
                 collapsed={sidebarCollapsed}
               >
-                {visibleItems.map((item) => (
+                {group.items.map((item) => (
                   <NavButton
                     key={item.id}
                     item={item}
@@ -469,32 +419,37 @@ export default function AppLayout() {
         />
 
         {/* Header bar */}
-        <header className="flex min-h-12 flex-shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2 shadow-sm sm:gap-3 sm:px-5">
-          <button
-            type="button"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border text-foreground hover:bg-muted md:hidden"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-            <h1 className="truncate text-base font-bold text-foreground">{pageMeta.title}</h1>
-            {pageMeta.subtitle && (
-              <span className="text-[11px] text-muted-foreground hidden lg:inline truncate">— {pageMeta.subtitle}</span>
-            )}
+        <header className="flex min-h-[3.25rem] flex-shrink-0 flex-col gap-3 border-b border-border/80 bg-card/85 px-4 py-3 shadow-sm backdrop-blur-md sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 lg:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button
+              type="button"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-border/80 bg-background text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">{pageMeta.title}</h1>
+              {pageMeta.subtitle ? (
+                <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-muted-foreground lg:line-clamp-1">
+                  {pageMeta.subtitle}
+                </p>
+              ) : null}
+            </div>
           </div>
 
-          <GlobalSearchBar className="order-last w-full min-w-0 sm:order-none sm:max-w-xl sm:flex-1" />
+          <GlobalSearchBar className="order-last w-full min-w-0 sm:order-none sm:max-w-md lg:max-w-xl sm:flex-1" />
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0 sm:gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-1 sm:ml-auto sm:justify-start sm:gap-1.5">
           {/* Notifications button */}
           <button
             onClick={() => { setNotificationsOpen(o => !o); setHelpOpen(false); }}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground relative cursor-pointer"
+            className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title="Notifications"
+            type="button"
           >
-            <Bell className="w-4 h-4" />
+            <Bell className="h-4 w-4" />
             {notificationUnread > 0 && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" aria-hidden />
             )}
@@ -502,41 +457,43 @@ export default function AppLayout() {
 
           {/* Dark mode toggle */}
           <button
+            type="button"
             onClick={toggleDark}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground cursor-pointer"
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title="Toggle dark mode"
           >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
 
           {/* Help button */}
           <button
+            type="button"
             onClick={() => { setHelpOpen(true); setNotificationsOpen(false); }}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground cursor-pointer"
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title="Help & shortcuts"
           >
-            <HelpCircle className="w-4 h-4" />
+            <HelpCircle className="h-4 w-4" />
           </button>
 
           {/* User badge */}
-          <div className="flex items-center gap-2 ml-1 pl-2 border-l border-border">
-            <div className="w-7 h-7 bg-accent rounded-full flex items-center justify-center text-[10px] font-bold text-accent-foreground">
+          <div className="ml-1 flex items-center gap-2.5 border-l border-border/80 pl-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-foreground">
               {initials}
             </div>
-            <div className="hidden sm:block">
-              <div className="text-xs font-medium text-foreground leading-tight">{profile?.name}</div>
-              <div className="text-[9px] text-muted-foreground capitalize">{userRole}</div>
+            <div className="hidden min-w-0 sm:block">
+              <div className="truncate text-xs font-medium leading-tight text-foreground">{profile?.name}</div>
+              <div className="text-[10px] capitalize leading-tight text-muted-foreground">{userRole}</div>
             </div>
           </div>
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-6 pt-4 animate-fade-in scrollbar-thin sm:p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 animate-fade-in scrollbar-thin sm:px-6 lg:px-10 lg:py-8">
           <div
             className={cn(
               'mx-auto w-full min-w-0 max-w-full',
-              activeTab === 'search' ? 'max-w-[960px]' : 'max-w-[1100px]',
+              activeTab === 'search' ? 'max-w-[960px]' : 'max-w-[var(--splm-page-max)]',
             )}
           >
             <SplmPage>

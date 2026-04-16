@@ -95,9 +95,9 @@ export default function GlobalSearchBar({ className }: { className?: string }) {
   const hasGroups = (data?.groups?.length ?? 0) > 0;
 
   return (
-    <div ref={rootRef} className={cn('relative flex-1 max-w-md min-w-[140px]', className)}>
-      <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
-        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+    <div ref={rootRef} className={cn('relative min-w-[160px] flex-1 max-w-md lg:max-w-xl', className)}>
+      <div className="flex items-center gap-2.5 rounded-xl border border-border/80 bg-muted/30 px-3 py-2 shadow-sm transition-shadow focus-within:border-primary/35 focus-within:bg-background focus-within:shadow-md focus-within:ring-2 focus-within:ring-primary/15">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <input
           ref={inputRef}
           id="global-search-input"
@@ -107,10 +107,10 @@ export default function GlobalSearchBar({ className }: { className?: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
-          className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
-        {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />}
-        <kbd className="hidden sm:inline text-[9px] text-muted-foreground/70 bg-muted px-1 py-0.5 rounded border shrink-0">
+        {loading && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
+        <kbd className="hidden shrink-0 rounded border border-border/80 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
           ⌘K
         </kbd>
       </div>

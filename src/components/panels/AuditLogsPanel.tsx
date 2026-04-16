@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { AuditLogUserSelect } from '@/components/forms/AuditLogUserSelect';
 import { SearchableSelect } from '@/components/forms/SearchableSelect';
 
 const MODULE_PRESETS = [
@@ -225,11 +226,11 @@ export default function AuditLogsPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="sticky top-0 z-10 -mx-1 space-y-3 rounded-lg border bg-card/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1 min-w-[140px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module</label>
+    <div className="space-y-6">
+      <div className="splm-filter-shell sticky top-0 z-10 -mx-0 space-y-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="grid min-w-[140px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Module</label>
             <SearchableSelect
               size="sm"
               triggerClassName="h-9"
@@ -240,8 +241,8 @@ export default function AuditLogsPanel() {
               contentWidth="wide"
             />
           </div>
-          <div className="grid gap-1 min-w-[140px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Action</label>
+          <div className="grid min-w-[140px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Action</label>
             <SearchableSelect
               size="sm"
               triggerClassName="h-9"
@@ -252,8 +253,8 @@ export default function AuditLogsPanel() {
               contentWidth="wide"
             />
           </div>
-          <div className="grid gap-1 min-w-[160px] flex-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Search</label>
+          <div className="grid min-w-[160px] flex-1 gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Search</label>
             <Input
               placeholder="Free text…"
               value={draft.search}
@@ -268,48 +269,55 @@ export default function AuditLogsPanel() {
             Reset
           </Button>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1 min-w-[200px] flex-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">User (GUID)</label>
-            <Input
-              placeholder="performed_by"
+        <div className="flex flex-wrap items-end gap-3 border-t border-border/60 pt-4">
+          <div className="grid min-w-[200px] flex-1 gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor="audit-filter-user">
+              User
+            </label>
+            <AuditLogUserSelect
+              id="audit-filter-user"
+              aria-label="Filter by user"
               value={draft.performedBy}
-              onChange={e => setDraft(d => ({ ...d, performedBy: e.target.value }))}
+              onValueChange={(userId) => setDraft(d => ({ ...d, performedBy: userId }))}
+              placeholder="Any user"
+              searchPlaceholder="Search user by name or email"
+              triggerClassName="w-full"
+              contentWidth="wide"
             />
           </div>
-          <div className="grid gap-1 min-w-[120px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Record ID</label>
+          <div className="grid min-w-[120px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Record ID</label>
             <Input
               value={draft.recordId}
               onChange={e => setDraft(d => ({ ...d, recordId: e.target.value }))}
               placeholder="Exact"
             />
           </div>
-          <div className="grid gap-1 min-w-[140px] flex-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Record name contains</label>
+          <div className="grid min-w-[140px] flex-1 gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Record name contains</label>
             <Input
               value={draft.recordNameContains}
               onChange={e => setDraft(d => ({ ...d, recordNameContains: e.target.value }))}
             />
           </div>
-          <div className="grid gap-1 min-w-[130px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">From (UTC)</label>
+          <div className="grid min-w-[130px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">From (UTC)</label>
             <Input
               type="date"
               value={draft.fromUtc}
               onChange={e => setDraft(d => ({ ...d, fromUtc: e.target.value }))}
             />
           </div>
-          <div className="grid gap-1 min-w-[130px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">To (UTC)</label>
+          <div className="grid min-w-[130px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">To (UTC)</label>
             <Input
               type="date"
               value={draft.toUtc}
               onChange={e => setDraft(d => ({ ...d, toUtc: e.target.value }))}
             />
           </div>
-          <div className="grid gap-1 min-w-[140px]">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sort</label>
+          <div className="grid min-w-[140px] gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Sort</label>
             <SearchableSelect
               size="sm"
               triggerClassName="h-9"
@@ -319,7 +327,7 @@ export default function AuditLogsPanel() {
               searchPlaceholder="Search sort field…"
             />
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground pb-2">
+          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
               checked={sortDescending}
@@ -334,7 +342,7 @@ export default function AuditLogsPanel() {
       </div>
 
       {loading && (
-        <div className="rounded-lg border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-border/80 bg-muted/20 px-4 py-16 text-center text-sm text-muted-foreground">
           Loading audit logs…
         </div>
       )}
@@ -352,7 +360,8 @@ export default function AuditLogsPanel() {
       )}
 
       {!loading && !error && items.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-splm">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -406,6 +415,7 @@ export default function AuditLogsPanel() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
 

@@ -96,19 +96,19 @@ const App = () => (
               {/* Index redirect so "/" → "/dashboard" */}
               <Route index element={<Navigate to="/dashboard" replace />} />
 
-              {/* ── Core SPLM routes ───────────────────────────────────── */}
-              <Route path="dashboard"    element={<Panel><DashboardPanel /></Panel>} />
-              <Route path="queue"        element={<Panel><MyQueuePanel /></Panel>} />
+              {/* ── Core SPLM routes (permissions from `config/splm-navigation.ts`) ── */}
+              <Route path="dashboard"    element={<PanelRoute segment="dashboard"><DashboardPanel /></PanelRoute>} />
+              <Route path="queue"        element={<PanelRoute segment="queue"><MyQueuePanel /></PanelRoute>} />
               <Route path="products"     element={<PanelRoute segment="products"><ProductsPanel /></PanelRoute>} />
               <Route path="tasks"        element={<PanelRoute segment="tasks"><TasksPanel /></PanelRoute>} />
               <Route path="sprints"      element={<PanelRoute segment="sprints"><SprintsPanel /></PanelRoute>} />
-              <Route path="versions"     element={<Panel><VersionControlPanel /></Panel>} />
-              <Route path="feedback"     element={<Panel><FeedbackPanel /></Panel>} />
+              <Route path="versions"     element={<PanelRoute segment="versions"><VersionControlPanel /></PanelRoute>} />
+              <Route path="feedback"     element={<PanelRoute segment="feedback"><FeedbackPanel /></PanelRoute>} />
               <Route path="research"     element={<PanelRoute segment="research"><ResearchPanel /></PanelRoute>} />
-              <Route path="wiki"         element={<Panel><WikiPanel /></Panel>} />
-              <Route path="deployments"  element={<Panel><DeploymentsPanel /></Panel>} />
+              <Route path="wiki"         element={<PanelRoute segment="wiki"><WikiPanel /></PanelRoute>} />
+              <Route path="deployments"  element={<PanelRoute segment="deployments"><DeploymentsPanel /></PanelRoute>} />
               <Route path="environments" element={<PanelRoute segment="environments"><EnvironmentsPanel /></PanelRoute>} />
-              <Route path="releases"     element={<Panel><ReleasesPanel /></Panel>} />
+              <Route path="releases"     element={<PanelRoute segment="releases"><ReleasesPanel /></PanelRoute>} />
               <Route path="team"         element={<PanelRoute segment="team"><DevelopersPanel /></PanelRoute>} />
               <Route path="audit-logs"   element={<PanelRoute segment="audit-logs"><AuditLogsPanel /></PanelRoute>} />
               <Route path="user-management" element={<PanelRoute segment="user-management"><AdminUsersPanel /></PanelRoute>} />
@@ -123,9 +123,9 @@ const App = () => (
               <Route path="pm-signoff"     element={<PanelRoute segment="pm-signoff"><PMSignOffPanel /></PanelRoute>} />
               <Route path="pdm-acceptance" element={<PanelRoute segment="pdm-acceptance"><PDMAcceptancePanel /></PanelRoute>} />
               <Route path="prompts"        element={<PanelRoute segment="prompts"><PromptLibraryPanel /></PanelRoute>} />
-              <Route path="kpi"            element={<Panel><KPIDashboardPanel /></Panel>} />
+              <Route path="kpi"            element={<PanelRoute segment="kpi"><KPIDashboardPanel /></PanelRoute>} />
               <Route path="canary"         element={<PanelRoute segment="canary"><CanaryDeploymentPanel /></PanelRoute>} />
-              <Route path="search"         element={<Panel><GlobalSearchPage /></Panel>} />
+              <Route path="search"         element={<PanelRoute segment="search"><GlobalSearchPage /></PanelRoute>} />
             </Route>
           </Route>
 

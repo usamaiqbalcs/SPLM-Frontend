@@ -3,6 +3,9 @@
  * `profiles.role` (JWT claim `user_role` after hydration) drives these permissions.
  * For UX, `AuthContext` prefers `GET /api/v1/auth/permissions` (server); this matrix is the offline fallback until that loads.
  * Do not confuse with roster `developers.role` (job title on the Team screen).
+ *
+ * Human-facing names for each permission key live in `config/splm-permission-ui.ts`.
+ * Sidebar ↔ permission mapping lives in `config/splm-navigation.ts`.
  */
 
 export const SplmRoles = {

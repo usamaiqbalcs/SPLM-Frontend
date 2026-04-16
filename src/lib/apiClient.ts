@@ -14,7 +14,6 @@
 
 import type { GlobalSearchResponse } from '@/lib/global-search-types';
 import { nullifyEmptyDateFields } from '@/lib/api-json';
-import { toast } from 'sonner';
 import {
   getAccessToken as getToken,
   looksLikeAccessJwt,
@@ -102,12 +101,13 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
 
   if (!res.ok) {
     if (res.status === 403) {
+      // Keep fetch helpers side-effect free for 403; UI layer decides how/when to notify
+      // so a single user action does not trigger duplicate permission toasts.
       const err = await res.json().catch(() => ({} as Record<string, unknown>));
       const friendly =
         typeof err?.message === 'string' && err.message.trim()
           ? String(err.message).trim()
           : 'You do not have permission to perform this action.';
-      toast.error(friendly);
       throw new Error(friendly);
     }
     const err = await res.json().catch(() => ({} as Record<string, unknown>));
@@ -693,6 +693,13 @@ export const auditLogsApi = {
     };
     const qs = toQueryString(merged as Record<string, unknown>);
     return netFetch<AuditLogPageDto>('GET', `/admin/audit-logs?${qs}`);
+  },
+
+  /** User picker for audit filters; requires audit.read (not identity.manage). */
+  searchUsersForFilter: async (params: { search?: string } = {}): Promise<AdminUserPageDto> => {
+    const merged = { page: 1, pageSize: 25, ...params };
+    const qs = toQueryString(merged as Record<string, unknown>);
+    return netFetch<AdminUserPageDto>('GET', `/admin/audit-logs/users/search?${qs}`);
   },
 
   getById: async (id: number): Promise<AuditLogDto> =>
