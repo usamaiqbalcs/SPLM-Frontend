@@ -17,7 +17,6 @@ import { toast } from 'sonner';
 
 type NavItem = { id: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string };
 type NavGroup = { label: string; items: NavItem[] };
-type GroupOpenMap = Record<string, boolean>;
 
 /** Sidebar structure from `config/splm-navigation.ts` + Lucide icons from `config/splm-nav-icons.ts`. */
 const navGroups: NavGroup[] = SPLM_NAV_SECTIONS.map((section) => ({
@@ -51,15 +50,9 @@ function CollapsibleGroup({
       <button
         type="button"
         onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
         aria-expanded={open}
         aria-label={`${label} section`}
-        className="group flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/45 transition-colors hover:bg-primary-foreground/5 hover:text-primary-foreground/70"
+        className="group relative z-10 flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/45 transition-colors hover:bg-primary-foreground/5 hover:text-primary-foreground/70"
       >
         <span className="truncate">{label}</span>
         <ChevronDown
@@ -124,25 +117,29 @@ export default function AppLayout() {
       .filter((group) => group.items.length > 0);
   }, [can]);
 
-  const [openGroups, setOpenGroups] = useState<GroupOpenMap>(() =>
-    Object.fromEntries(navGroups.map((group) => [group.label, group.label === 'Overview'])),
-  );
+  const [openSectionId, setOpenSectionId] = useState<string>('Overview');
 
   const toggleGroup = useCallback((label: string) => {
     /**
-     * Root cause/fix: submenu state was local to each group and derived from `defaultOpen`,
-     * so route/layout re-renders could desynchronize click intent from visual state.
-     * A centralized functional update makes first-click toggles deterministic.
+     * Root cause/fix: per-group open state could drift when several sections were open,
+     * causing unreliable first-click toggles across groups. Use one accordion-style
+     * section key so each click deterministically opens/closes exactly one section.
      */
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+    setOpenSectionId((prev) => (prev === label ? '' : label));
   }, []);
 
   useEffect(() => {
     // Keep the active route's group open after navigation.
     const activeGroup = visibleNavGroups.find((group) => group.items.some((i) => i.id === activeTab));
     if (!activeGroup) return;
-    setOpenGroups((prev) => (prev[activeGroup.label] ? prev : { ...prev, [activeGroup.label]: true }));
+    setOpenSectionId(activeGroup.label);
   }, [activeTab, visibleNavGroups]);
+
+  useEffect(() => {
+    // If permissions hide the currently open section, fall back safely.
+    if (visibleNavGroups.some((g) => g.label === openSectionId)) return;
+    setOpenSectionId(visibleNavGroups[0]?.label ?? '');
+  }, [openSectionId, visibleNavGroups]);
 
   const toggleDark = () => {
     document.documentElement.classList.toggle('dark');
@@ -334,7 +331,7 @@ export default function AppLayout() {
               <CollapsibleGroup
                 key={group.label}
                 label={group.label}
-                open={openGroups[group.label] ?? false}
+                open={openSectionId === group.label}
                 onToggle={() => toggleGroup(group.label)}
                 collapsed={sidebarCollapsed}
               >
