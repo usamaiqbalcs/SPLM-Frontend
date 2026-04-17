@@ -19,10 +19,11 @@ import {
   looksLikeAccessJwt,
   tryRefreshAccessToken,
 } from '@/lib/token-lifecycle';
+import { getApiBaseUrl, parseErrorJson, parseSuccessJson } from '@/lib/api-http';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -103,14 +104,14 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
     if (res.status === 403) {
       // Keep fetch helpers side-effect free for 403; UI layer decides how/when to notify
       // so a single user action does not trigger duplicate permission toasts.
-      const err = await res.json().catch(() => ({} as Record<string, unknown>));
+      const err = await parseErrorJson(res);
       const friendly =
         typeof err?.message === 'string' && err.message.trim()
           ? String(err.message).trim()
           : 'You do not have permission to perform this action.';
       throw new Error(friendly);
     }
-    const err = await res.json().catch(() => ({} as Record<string, unknown>));
+    const err = await parseErrorJson(res);
     const fromErrors = flattenApiValidationErrors(err?.errors);
     const detail = typeof err?.detail === 'string' ? err.detail.trim() : '';
     const title = typeof err?.title === 'string' ? err.title.trim() : '';
@@ -125,7 +126,7 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  return parseSuccessJson<T>(res, `${method} ${path}`);
 }
 
 // ── Type definitions ──────────────────────────────────────────────────────────

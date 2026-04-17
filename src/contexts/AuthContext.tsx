@@ -16,8 +16,9 @@ import {
   saveRefreshToken,
   tryRefreshAccessToken,
 } from '@/lib/token-lifecycle';
+import { getApiBaseUrl, parseErrorJson, parseSuccessJson } from '@/lib/api-http';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -86,14 +87,14 @@ async function authFetch<T>(path: string, init: RequestInit = {}, token?: string
   const res = await fetch(`${API_BASE}/api/v1${path}`, { ...init, headers });
   if (!res.ok) {
     if (res.status === 403) {
-      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      const body = await parseErrorJson(res);
       const friendly =
         typeof body?.message === 'string' && body.message.trim()
           ? String(body.message).trim()
           : 'You do not have permission to perform this action.';
       throw new Error(friendly);
     }
-    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const body = await parseErrorJson(res);
     const fromErrors =
       Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
     const msg =
@@ -105,7 +106,7 @@ async function authFetch<T>(path: string, init: RequestInit = {}, token?: string
     throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  return parseSuccessJson<T>(res, `authFetch ${path}`);
 }
 
 async function fetchMe(token: string): Promise<MeResponse> {
@@ -114,7 +115,7 @@ async function fetchMe(token: string): Promise<MeResponse> {
     headers: { Authorization: `Bearer ${trimmed}`, Accept: 'application/json' },
   });
   if (res.status === 401 || res.status === 403) {
-    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const body = await parseErrorJson(res);
     const fromErrors =
       Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
     if (res.status === 403) {
@@ -136,7 +137,7 @@ async function fetchMe(token: string): Promise<MeResponse> {
     throw err;
   }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const body = await parseErrorJson(res);
     const fromErrors =
       Array.isArray(body?.errors) ? (body.errors as string[]).filter(Boolean).join(' ') : '';
     const msg =
@@ -146,7 +147,7 @@ async function fetchMe(token: string): Promise<MeResponse> {
       `HTTP ${res.status}`;
     throw new Error(msg);
   }
-  return res.json() as Promise<MeResponse>;
+  return parseSuccessJson<MeResponse>(res, 'GET /auth/me');
 }
 
 async function fetchMeWithOptionalRefresh(token: string): Promise<MeResponse> {
@@ -206,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (res.status === 401 || res.status === 403) {
         if (res.status === 403) {
-          const body = await res.json().catch(() => ({} as Record<string, unknown>));
+          const body = await parseErrorJson(res);
           const friendly =
             typeof body?.message === 'string' && body.message.trim()
               ? String(body.message).trim()
@@ -220,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json() as Promise<MyPermissionsResponse>;
+      return parseSuccessJson<MyPermissionsResponse>(res, 'GET /auth/permissions');
     };
     try {
       try {

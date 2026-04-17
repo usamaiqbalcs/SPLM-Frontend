@@ -3,7 +3,9 @@
  * Refresh tokens are opaque secrets; keep them out of logs. Stored in localStorage (same-origin SPA limitation).
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+import { getApiBaseUrl, parseSuccessJson } from '@/lib/api-http';
+
+const API_BASE = getApiBaseUrl();
 
 export const ACCESS_TOKEN_KEY = 'zenatech_jwt';
 export const REFRESH_TOKEN_KEY = 'zenatech_refresh';
@@ -117,7 +119,7 @@ export async function tryRefreshAccessToken(): Promise<boolean> {
     return false;
   }
 
-  const d = (await res.json()) as Record<string, unknown>;
+  const d = await parseSuccessJson<Record<string, unknown>>(res, 'POST /auth/refresh');
   const token =
     typeof d.access_token === 'string'
       ? d.access_token.trim()
