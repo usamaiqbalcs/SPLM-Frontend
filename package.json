@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "@tiptap/extension-collaboration-cursor": "latest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

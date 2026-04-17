@@ -4,7 +4,7 @@ Modern B2B SaaS patterns for this codebase: **hierarchy first**, **calm surfaces
 
 ## Spacing
 
-- **Page shell**: Main content uses horizontal padding `px-4 sm:px-6 lg:px-10` and vertical `py-6 lg:py-8` (see `AppLayout`). Max width `--splm-page-max` (1200px) for standard pages; **Dashboard & KPI** use full main width (`SPLM_WIDE_CONTENT_TAB_IDS` in `splm-navigation.ts`); global search stays narrower (`max-w-[960px]`).
+- **Page shell**: Main content uses horizontal padding `px-4 sm:px-6` and vertical `py-6 lg:py-8` (see `AppLayout`). Max width `--splm-page-max` (1600px) for standard pages; **Dashboard & KPI** use full main width (`SPLM_WIDE_CONTENT_TAB_IDS` in `splm-navigation.ts`); global search stays narrower (`max-w-[960px]`).
 - **Between sections**: Prefer `space-y-8` on dashboard-style pages; module panels often use `space-y-4`–`space-y-6` for dense tools.
 - **Inside cards**: `CardHeader` / `CardContent` use `p-5 sm:p-6` (see `card.tsx`). Keep related actions in the header row; body is for scan-friendly content.
 - **Filter bars**: Use the `splm-filter-shell` class for sticky filter strips (light border, rounded-xl, subtle blur). Separate filter **rows** with `border-t border-border/60 pt-4` when grouping “quick” vs “advanced” filters.

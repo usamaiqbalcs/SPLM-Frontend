@@ -382,7 +382,7 @@ export default function AppLayout() {
         />
 
         {/* Header bar */}
-        <header className="flex min-h-[3.25rem] flex-shrink-0 flex-col gap-3 border-b border-border/80 bg-card/85 px-4 py-3 shadow-sm backdrop-blur-md sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 lg:px-8">
+        <header className="flex min-h-[3.25rem] flex-shrink-0 flex-col gap-3 border-b border-border/80 bg-card/85 px-4 py-3 shadow-sm backdrop-blur-md sm:min-h-14 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
               type="button"
@@ -452,7 +452,7 @@ export default function AppLayout() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 animate-fade-in scrollbar-thin [scrollbar-gutter:stable] sm:px-6 lg:px-10 lg:py-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 animate-fade-in scrollbar-thin [scrollbar-gutter:stable] sm:px-6 lg:py-8">
           {/*
             Root cause (narrow “paginated page” feel): a global max-width + mx-auto wrapped every route.
             Search keeps a deliberate narrow column; dashboards use full main width (see SPLM_WIDE_CONTENT_TAB_IDS).
