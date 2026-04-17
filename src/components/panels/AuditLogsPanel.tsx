@@ -240,12 +240,13 @@ export default function AuditLogsPanel() {
         Filters stay in a normal flow card (no sticky) so only the main area scrolls; table + pager share one card.
       */}
       <div className="splm-filter-shell space-y-4 rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:p-5">
+        {/* Row 1 */}
         <div className="flex flex-wrap items-end gap-3">
-          <div className="grid min-w-[140px] gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Module</label>
             <SearchableSelect
               size="sm"
-              triggerClassName="h-9"
+              triggerClassName="h-9 w-[140px]"
               options={AUDIT_MODULE_SELECT_OPTIONS}
               value={moduleName}
               onValueChange={(v) => { setModuleName(v); setPage(1); }}
@@ -253,11 +254,11 @@ export default function AuditLogsPanel() {
               contentWidth="wide"
             />
           </div>
-          <div className="grid min-w-[140px] gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Action</label>
             <SearchableSelect
               size="sm"
-              triggerClassName="h-9"
+              triggerClassName="h-9 w-[140px]"
               options={AUDIT_ACTION_SELECT_OPTIONS}
               value={action}
               onValueChange={(v) => { setAction(v); setPage(1); }}
@@ -265,27 +266,24 @@ export default function AuditLogsPanel() {
               contentWidth="wide"
             />
           </div>
-          <div className="grid min-w-[160px] flex-1 gap-1.5">
+          <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Search</label>
             <Input
+              className="h-9"
               placeholder="Free text…"
               value={draft.search}
               onChange={e => setDraft(d => ({ ...d, search: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') applyTextFilters(); }}
             />
           </div>
-          <Button type="button" size="sm" onClick={applyTextFilters}>
-            Apply
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={resetFilters}>
-            Reset
-          </Button>
+          <Button type="button" size="sm" className="h-9" onClick={applyTextFilters}>Apply</Button>
+          <Button type="button" size="sm" className="h-9" variant="outline" onClick={resetFilters}>Reset</Button>
         </div>
-        <div className="flex flex-wrap items-end gap-3 border-t border-border/60 pt-4">
-          <div className="grid min-w-[200px] flex-1 gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="audit-filter-user">
-              User
-            </label>
+
+        {/* Row 2a: 12-col grid — User(5) | Record ID(3) | Record name contains(4) */}
+        <div className="grid grid-cols-12 items-end gap-3 border-t border-border/60 pt-4">
+          <div className="col-span-5 flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor="audit-filter-user">User</label>
             <AuditLogUserSelect
               id="audit-filter-user"
               aria-label="Filter by user"
@@ -293,53 +291,42 @@ export default function AuditLogsPanel() {
               onValueChange={(userId) => setDraft(d => ({ ...d, performedBy: userId }))}
               placeholder="Any user"
               searchPlaceholder="Search user by name or email"
-              triggerClassName="w-full"
+              triggerClassName="h-9 w-full"
               contentWidth="wide"
             />
           </div>
-          <div className="grid min-w-[120px] gap-1.5">
+          <div className="col-span-3 flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Record ID</label>
-            <Input
-              value={draft.recordId}
-              onChange={e => setDraft(d => ({ ...d, recordId: e.target.value }))}
-              placeholder="Exact"
-            />
+            <Input className="h-9 w-full" value={draft.recordId} onChange={e => setDraft(d => ({ ...d, recordId: e.target.value }))} placeholder="Exact" />
           </div>
-          <div className="grid min-w-[140px] flex-1 gap-1.5">
+          <div className="col-span-4 flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Record name contains</label>
-            <Input
-              value={draft.recordNameContains}
-              onChange={e => setDraft(d => ({ ...d, recordNameContains: e.target.value }))}
-            />
+            <Input className="h-9 w-full" value={draft.recordNameContains} onChange={e => setDraft(d => ({ ...d, recordNameContains: e.target.value }))} />
           </div>
-          <div className="grid min-w-[130px] gap-1.5">
+        </div>
+
+        {/* Row 2b: From | To | Sort | Descending | Apply filters */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">From (UTC)</label>
-            <Input
-              type="date"
-              value={draft.fromUtc}
-              onChange={e => setDraft(d => ({ ...d, fromUtc: e.target.value }))}
-            />
+            <Input className="h-9 w-[150px]" type="date" value={draft.fromUtc} onChange={e => setDraft(d => ({ ...d, fromUtc: e.target.value }))} />
           </div>
-          <div className="grid min-w-[130px] gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">To (UTC)</label>
-            <Input
-              type="date"
-              value={draft.toUtc}
-              onChange={e => setDraft(d => ({ ...d, toUtc: e.target.value }))}
-            />
+            <Input className="h-9 w-[150px]" type="date" value={draft.toUtc} onChange={e => setDraft(d => ({ ...d, toUtc: e.target.value }))} />
           </div>
-          <div className="grid min-w-[140px] gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Sort</label>
             <SearchableSelect
               size="sm"
-              triggerClassName="h-9"
+              triggerClassName="h-9 w-[150px]"
               options={AUDIT_SORT_SELECT_OPTIONS}
               value={sortBy}
               onValueChange={(v) => { setSortBy(v); setPage(1); }}
               searchPlaceholder="Search sort field…"
             />
           </div>
-          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-muted-foreground">
+          <label className="flex h-9 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
               checked={sortDescending}
@@ -347,7 +334,7 @@ export default function AuditLogsPanel() {
             />
             Descending
           </label>
-          <Button type="button" size="sm" className="mb-0.5" variant="secondary" onClick={applyTextFilters}>
+          <Button type="button" size="sm" className="h-9" variant="secondary" onClick={applyTextFilters}>
             Apply filters
           </Button>
         </div>
