@@ -22,10 +22,8 @@ export const addComment = async (taskId: string, _userId: string, content: strin
 export const deleteComment = async (taskId: string, commentId: string) =>
   tasksApi.deleteComment(taskId, commentId);
 
-/** updateComment — not yet supported by the .NET backend (no-op). */
-export const updateComment = async (_taskId: string, _id: string, _content: string) => {
-  // TODO: add PUT /tasks/{taskId}/comments/{id} endpoint
-};
+export const updateComment = async (taskId: string, commentId: string, content: string) =>
+  tasksApi.updateComment(taskId, commentId, content);
 
 // ── Subtasks ──────────────────────────────────────────────────────────────────
 

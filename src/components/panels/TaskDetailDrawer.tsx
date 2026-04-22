@@ -8,13 +8,14 @@
  *
  * api-comments.ts function signatures changed:
  *  - deleteComment(taskId, commentId)   (was deleteComment(commentId))
+ *  - updateComment(taskId, commentId, content)  (PUT /tasks/.../comments/...)
  *  - toggleSubtask(taskId, id, completed)  (was toggleSubtask(id, completed))
  *  - deleteSubtask(taskId, id)           (was deleteSubtask(id))
  */
 
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import {
-  listComments, addComment, deleteComment,
+  listComments, addComment, updateComment, deleteComment,
   listSubtasks, addSubtask, toggleSubtask, deleteSubtask,
 } from '@/lib/api-comments';
 import { updateTaskStoryPoints } from '@/lib/api-sprints';
@@ -32,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  X, Send, Trash2, CheckSquare, Square, Plus,
+  X, Send, Trash2, Pencil, CheckSquare, Square, Plus,
   MessageSquare, ListChecks, Clock, User, Package, Sparkles,
 } from 'lucide-react';
 import { qaCyclesApi, taskAiApi, type QaCycleDto } from '@/lib/api-aisdlc';
@@ -74,6 +75,8 @@ export default function TaskDetailDrawer({
   const [newSubtask, setNewSubtask] = useState('');
   const [storyPoints, setStoryPoints] = useState(task.story_points || 0);
   const [sending, setSending]       = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentDraft, setEditCommentDraft]   = useState('');
   const [activeTab, setActiveTab]   = useState<'details' | 'subtasks' | 'ai'>('details');
   const [saving, setSaving]         = useState(false);
   const [editDraft, setEditDraft]   = useState({
@@ -100,6 +103,8 @@ export default function TaskDetailDrawer({
 
   // ── Load comments + subtasks on mount / task change ──────────────────────────
   useEffect(() => {
+    setEditingCommentId(null);
+    setEditCommentDraft('');
     loadComments();
     loadSubtasks();
   }, [task.id]);
@@ -159,6 +164,17 @@ export default function TaskDetailDrawer({
       commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } catch (e: any) { toast.error(e.message); }
     finally { setSending(false); }
+  };
+
+  const doUpdateComment = async (commentId: string) => {
+    const t = editCommentDraft.trim();
+    if (!t) return;
+    try {
+      await updateComment(task.id, commentId, t);
+      setEditingCommentId(null);
+      setEditCommentDraft('');
+      await loadComments();
+    } catch (e: any) { toast.error(e.message); }
   };
 
   const doDeleteComment = async (commentId: string) => {
@@ -632,22 +648,65 @@ export default function TaskDetailDrawer({
                             <span className="text-[11px] font-semibold text-foreground">{authorName}</span>
                             <span className="text-[10px] text-muted-foreground">{fmtDateTime(c.created_at)}</span>
                           </div>
-                          <div
-                            className={cn(
-                              'inline-block rounded-lg px-3 py-2 text-left text-sm',
-                              isOwn ? 'bg-primary/10 text-foreground' : 'bg-muted text-foreground',
-                            )}
-                          >
-                            {c.content}
-                          </div>
-                          {isOwn && (
-                            <button
-                              type="button"
-                              onClick={() => doDeleteComment(c.id)}
-                              className="mt-0.5 cursor-pointer text-[10px] text-muted-foreground hover:text-destructive"
-                            >
-                              Delete
-                            </button>
+                          {isOwn && editingCommentId === c.id ? (
+                            <div className="space-y-2 text-left">
+                              <Textarea
+                                value={editCommentDraft}
+                                onChange={(e) => setEditCommentDraft(e.target.value)}
+                                className="min-h-[72px] text-sm"
+                                rows={3}
+                              />
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingCommentId(null); setEditCommentDraft(''); }}
+                                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                                >
+                                  Cancel
+                                </button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={!editCommentDraft.trim()}
+                                  onClick={() => doUpdateComment(c.id)}
+                                >
+                                  Save
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div
+                                className={cn(
+                                  'inline-block rounded-lg px-3 py-2 text-left text-sm whitespace-pre-wrap',
+                                  isOwn ? 'bg-primary/10 text-foreground' : 'bg-muted text-foreground',
+                                )}
+                              >
+                                {c.content}
+                              </div>
+                              {isOwn && (
+                                <div
+                                  className="mt-0.5 flex items-center gap-3"
+                                  style={{ justifyContent: isOwn ? 'flex-end' : 'flex-start' }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => { setEditingCommentId(c.id); setEditCommentDraft(c.content || ''); }}
+                                    className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => doDeleteComment(c.id)}
+                                    className="text-[10px] text-muted-foreground hover:text-destructive"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>

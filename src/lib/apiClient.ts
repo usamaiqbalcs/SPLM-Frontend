@@ -247,6 +247,9 @@ export const tasksApi = {
   addComment: async (taskId: string, content: string) =>
     netFetch<any>('POST', `/tasks/${taskId}/comments`, { content }),
 
+  updateComment: async (taskId: string, commentId: string, content: string) =>
+    netFetch<any>('PUT', `/tasks/${taskId}/comments/${commentId}`, { content }),
+
   deleteComment: async (taskId: string, commentId: string) =>
     netFetch<void>('DELETE', `/tasks/${taskId}/comments/${commentId}`),
 
