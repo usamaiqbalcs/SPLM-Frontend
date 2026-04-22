@@ -338,6 +338,10 @@ export const createDeployment = (d: any) => deploymentsApi.create(d);
 export const updateDeploymentStatus = (id: string, status: string, failReason?: string) =>
   deploymentsApi.patch(id, { status, fail_reason: failReason });
 
+export const triggerAwsDeployment = (id: string) => deploymentsApi.trigger(id);
+
+export const getDeploymentStatus = (id: string) => deploymentsApi.getStatus(id);
+
 // ── Versions / Version Control ────────────────────────────────────────────────
 
 export const listVersions = async (productId: string) => {

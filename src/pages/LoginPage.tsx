@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { KeyRound, Sparkles, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { KeyRound, Sparkles, ShieldCheck, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -28,12 +28,10 @@ export default function LoginPage() {
       if (mode === 'signup') {
         await signUp(email, password, name);
         setSuccess('Account created! Check your email to confirm.');
-        const from = (location.state as any)?.from?.pathname ?? '/dashboard';
-        navigate(from, { replace: true });
+        navigate('/dashboard', { replace: true });
       } else {
         await signIn(email, password);
-        const from = (location.state as any)?.from?.pathname ?? '/dashboard';
-        navigate(from, { replace: true });
+        navigate('/dashboard', { replace: true });
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -116,13 +114,24 @@ export default function LoginPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">Password</label>
-                <input
-                  className="portal-input"
-                  type="password"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    className="portal-input pr-10"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
 
               {error && (

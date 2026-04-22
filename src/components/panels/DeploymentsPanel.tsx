@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { listDeploymentsPage, createDeployment, updateDeploymentStatus, listProductsForDropdown } from '@/lib/api';
+import { listDeploymentsPage, createDeployment, updateDeploymentStatus, triggerAwsDeployment, listProductsForDropdown } from '@/lib/api';
 import { ListPageSearchInput, ListPaginationBar, useListPageSearchDebounce } from '@/components/listing/listPageSearch';
 import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -125,7 +125,29 @@ export default function DeploymentsPanel() {
   const doAdvance = async (id: string, current: string) => {
     const next = nextStatus[current];
     if (!next) return;
-    try { await updateDeploymentStatus(id, next); toast.success(`Stage advanced to ${next}`); load(); } catch (e: any) { toast.error(e.message); }
+    
+    // If advancing to "building", trigger AWS deployment pipeline
+    if (next === 'building') {
+      try {
+        const result = await triggerAwsDeployment(id);
+        toast.success(`🚀 AWS deployment pipeline triggered!`);
+        if (result.workflowRunUrl) {
+          toast.info(`View on GitHub: ${result.workflowRunUrl}`, { duration: 5000 });
+        }
+        load();
+      } catch (e: any) {
+        toast.error(e.message);
+      }
+    } else {
+      // For other status transitions, use the existing update endpoint
+      try {
+        await updateDeploymentStatus(id, next);
+        toast.success(`Stage advanced to ${next}`);
+        load();
+      } catch (e: any) {
+        toast.error(e.message);
+      }
+    }
   };
 
   const doFail = async (reason: string) => {

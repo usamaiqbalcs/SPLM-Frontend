@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { KeyRound, ShieldAlert } from 'lucide-react';
+import { KeyRound, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { authPublicApi } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ export default function ResetPasswordPage() {
   const [tokenValid, setTokenValid] = useState(false);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [doneMessage, setDoneMessage] = useState('');
@@ -121,21 +123,45 @@ export default function ResetPasswordPage() {
               </p>
               <div className="grid gap-1">
                 <label className="text-xs font-medium text-muted-foreground">New password</label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
               <div className="grid gap-1">
                 <label className="text-xs font-medium text-muted-foreground">Confirm password</label>
-                <Input
-                  type="password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <Input
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirm}
+                    onChange={e => setConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
                 At least 8 characters, including a letter, a number, and a special character.

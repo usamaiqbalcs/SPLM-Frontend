@@ -65,11 +65,16 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
   }, []);
 
   useEffect(() => {
+    // Reset all state before re-fetching so the skeleton shows for the new product
+    // and stale data from a previously selected product is never visible.
     setBreakdownPage(1);
     setSnapshotsPage(1);
+    setSummary(null);
+    setSnapshots([]);
+    setLoading(true);
+
     const fetchKPIData = async () => {
       try {
-        setLoading(true);
         const pid = selectedProductId === 'all' ? undefined : selectedProductId;
         const [summaryData, snapshotsData] = await Promise.all([
           kpiApi.getDashboard(pid),
@@ -80,6 +85,7 @@ export default function KPIDashboardPanel() {   // ← was: export function (nam
       } catch (error) {
         toast.error('Failed to load KPI data');
         console.error(error);
+        setSummary(null);
       } finally {
         setLoading(false);
       }

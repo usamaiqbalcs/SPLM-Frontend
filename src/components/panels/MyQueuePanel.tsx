@@ -385,6 +385,7 @@ export default function MyQueuePanel() {
           task={selectedTask}
           products={products}
           developers={developer ? [developer] : []}
+          sprints={[]}
           onClose={() => setSelectedTask(null)}
           onRefresh={async () => {
             await load(true);

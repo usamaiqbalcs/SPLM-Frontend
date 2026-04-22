@@ -367,8 +367,9 @@ export default function QACyclesPanel() {
           <DialogHeader>
             <DialogTitle>Log QA Issue</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[60vh] space-y-4 overflow-y-auto py-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="max-h-[60vh] overflow-y-auto py-4 pr-5">
+            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-1 block">Title *</Label>
                 <Input
@@ -404,7 +405,7 @@ export default function QACyclesPanel() {
                 rows={3}
               />
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-1 block">Severity</Label>
                 <SearchableSelect
@@ -488,6 +489,7 @@ export default function QACyclesPanel() {
                 Fix Applied
               </Label>
             </div>
+            </div>{/* end space-y-4 */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateIssueOpen(false)}>

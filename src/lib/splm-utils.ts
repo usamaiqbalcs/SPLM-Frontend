@@ -40,3 +40,34 @@ export const ENV_CONFIG = {
   staging: { label: 'Staging', icon: '🔬', description: 'Pre-production QA' },
   production: { label: 'Production', icon: '🚀', description: 'Live customer traffic' },
 } as const;
+
+/** key + helpers — `sessionStorage` (not `localStorage`) so list/board is per session and not shared by account on a shared device; cleared in `AuthContext` on sign-out. */
+const TASKS_VIEW_MODE_KEY = 'splm-task-view';
+
+export function readTasksViewModeForSession(): 'list' | 'kanban' {
+  try {
+    const v = sessionStorage.getItem(TASKS_VIEW_MODE_KEY);
+    if (v === 'list' || v === 'kanban') return v;
+  } catch {
+    /* private / unavailable */
+  }
+  return 'kanban';
+}
+
+export function writeTasksViewModeForSession(mode: 'list' | 'kanban'): void {
+  try {
+    sessionStorage.setItem(TASKS_VIEW_MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Call when auth ends (sign out, session expiry) so the next user defaults to board and the legacy localStorage key is removed. */
+export function clearTasksViewModeStorage(): void {
+  try {
+    sessionStorage.removeItem(TASKS_VIEW_MODE_KEY);
+    localStorage.removeItem(TASKS_VIEW_MODE_KEY);
+  } catch {
+    /* ignore */
+  }
+}

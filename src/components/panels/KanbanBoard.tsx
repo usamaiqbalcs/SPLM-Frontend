@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { updateTaskStatus } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,8 @@ interface KanbanBoardProps {
 export default function KanbanBoard({ tasks, products, developers, onRefresh, onTaskClick }: KanbanBoardProps) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  /** Mousedown/pointer position — ignore click after a drag when movement is large. */
+  const cardPointer0 = useRef<Record<string, { x: number; y: number }>>({});
 
   const pname = (id: string) => products.find(p => p.id === id)?.name || '—';
   const dname = (id: string) => developers.find(d => d.id === id)?.name || '';
@@ -55,6 +57,23 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
       toast.error(err.message);
     }
     setDraggedId(null);
+  };
+
+  /** Ignore click when the pointer moved a lot (drag) so we don’t open the drawer after dropping a card. */
+  const handleCardClick = (e: React.MouseEvent, t: { id: string }) => {
+    const p0 = cardPointer0.current[t.id];
+    if (!p0) {
+      onTaskClick(t);
+      return;
+    }
+    const d = Math.hypot(e.clientX - p0.x, e.clientY - p0.y);
+    delete cardPointer0.current[t.id];
+    if (d > 8) return;
+    onTaskClick(t);
+  };
+
+  const onCardPointerDown = (e: React.PointerEvent, taskId: string) => {
+    cardPointer0.current[taskId] = { x: e.clientX, y: e.clientY };
   };
 
   const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -102,8 +121,9 @@ export default function KanbanBoard({ tasks, products, developers, onRefresh, on
                 <div
                   key={t.id}
                   draggable
+                  onPointerDown={(e) => onCardPointerDown(e, t.id)}
                   onDragStart={(e) => handleDragStart(e, t.id)}
-                  onClick={() => onTaskClick(t)}
+                  onClick={(e) => handleCardClick(e, t)}
                   className={cn(
                     'bg-card rounded-md border p-3 cursor-pointer hover:shadow-md transition-all group',
                     draggedId === t.id && 'opacity-40 scale-95'

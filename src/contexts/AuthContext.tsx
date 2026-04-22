@@ -17,6 +17,7 @@ import {
   tryRefreshAccessToken,
 } from '@/lib/token-lifecycle';
 import { getApiBaseUrl, parseErrorJson, parseSuccessJson } from '@/lib/api-http';
+import { clearTasksViewModeStorage } from '@/lib/splm-utils';
 
 const API_BASE = getApiBaseUrl();
 
@@ -174,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearSession = useCallback(() => {
     clearAllAuthTokens();
+    clearTasksViewModeStorage();
     setUser(null);
     setSession(null);
     setProfile(null);

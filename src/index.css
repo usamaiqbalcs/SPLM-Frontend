@@ -422,4 +422,47 @@
   .animate-slide-in-right {
     animation: slide-in-right 0.25s ease-out;
   }
+
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.25s ease-out;
+  }
+
+  /* Sonner — stay above app chrome (sidebar/header) so success/error toasts are visible */
+  [data-sonner-toaster] {
+    z-index: 9999 !important;
+  }
+
+  /*
+   * Sonner renders the close <button> first, then the icon + title (it was meant to sit
+   * absolutely in a corner). Override the absolute slot and re-order in flex so X is
+   * trailing: [icon] [message …] [×] on the right.
+   */
+  :where([data-sonner-toast][data-styled='true']) {
+    --toast-close-button-start: unset;
+    --toast-close-button-end: unset;
+  }
+
+  :where([data-sonner-toast]) :where([data-content]) {
+    flex: 1 1 0% !important;
+    min-width: 0;
+  }
+
+  :where([data-sonner-toast]) :where([data-close-button]) {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    z-index: auto;
+    order: 10;
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: center;
+  }
 }

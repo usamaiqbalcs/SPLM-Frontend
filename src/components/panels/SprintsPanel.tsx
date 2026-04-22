@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { listSprints, saveSprint, deleteSprint, assignTaskToSprint } from '@/lib/api-sprints';
 import { listTasks, listProductsForDropdown, listDevelopers } from '@/lib/api';
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   DEFAULT_LIST_PAGE_SIZE,
   ListPageSearchInput,
   ListPaginationBar,
@@ -39,6 +48,7 @@ export default function SprintsPanel() {
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteBlockedId, setDeleteBlockedId] = useState<string | null>(null);
   const [expandedSprint, setExpandedSprint] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
   const [bulkAi, setBulkAi] = useState<{
@@ -213,11 +223,31 @@ export default function SprintsPanel() {
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}
         title="Delete Sprint"
-        description="This will remove the sprint. Tasks assigned to it will be moved to backlog."
+        description="This will permanently remove the sprint. Are you sure you want to continue?"
         confirmLabel="Delete Sprint"
         variant="destructive"
         onConfirm={doDelete}
       />
+
+      {/* Blocked-delete dialog: shown when the sprint has assigned tasks */}
+      {deleteBlockedId && (() => {
+        const count = sprintTasks(deleteBlockedId).length;
+        return (
+          <AlertDialog open onOpenChange={(o) => !o && setDeleteBlockedId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cannot Delete Sprint</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {`Cannot delete sprint because ${count} task${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} assigned to it. Please remove or reassign all tasks first.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setDeleteBlockedId(null)}>Close</AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        );
+      })()}
 
       {/* Velocity chart */}
       {velocityData.length > 0 && (
@@ -303,7 +333,23 @@ export default function SprintsPanel() {
                               Edit
                             </Button>
                           )}
-                          {can('edit') && <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }}>Delete</Button>}
+                          {can('edit') && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const assignedCount = sprintTasks(s.id).length;
+                                if (assignedCount > 0) {
+                                  setDeleteBlockedId(s.id);
+                                } else {
+                                  setDeleteId(s.id);
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">

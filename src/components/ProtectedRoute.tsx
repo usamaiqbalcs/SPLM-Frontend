@@ -3,8 +3,7 @@
  *
  * Place this as the parent element of any <Route> tree that requires
  * an authenticated user.  Unauthenticated visitors are redirected to
- * /login.  The `state.from` payload lets LoginPage redirect back to the
- * originally requested URL after successful authentication.
+ * /login.  After sign-in, the app always opens the dashboard.
  *
  * Usage in App.tsx:
  *   <Route element={<ProtectedRoute />}>
@@ -15,12 +14,11 @@
  */
 
 import { useEffect } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function ProtectedRoute() {
   const { user, loading, profile, signOut } = useAuth();
-  const location = useLocation();
 
   useEffect(() => {
     if (!loading && user && profile && !profile.active) {
@@ -34,13 +32,7 @@ export function ProtectedRoute() {
   if (loading) return null;
 
   if (!user) {
-    return (
-      <Navigate
-        to="/login"
-        state={{ from: location }}
-        replace
-      />
-    );
+    return <Navigate to="/login" replace />;
   }
 
   if (profile && !profile.active) {

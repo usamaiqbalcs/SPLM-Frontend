@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fmtDate, toHtmlDateInputValue } from '@/lib/splm-utils';
+import { fmtDate, toHtmlDateInputValue, readTasksViewModeForSession, writeTasksViewModeForSession } from '@/lib/splm-utils';
 import { DateField } from '@/components/ui/date-field';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { toast } from 'sonner';
@@ -39,7 +39,7 @@ export default function TasksPanel() {
   const [taskPage, setTaskPage] = useState(1);
   const [boardPage, setBoardPage] = useState(1);
   const [taskTotalCount, setTaskTotalCount] = useState(0);
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => (localStorage.getItem('splm-task-view') as any) || 'list');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(readTasksViewModeForSession);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [searchQ, setSearchQ] = useState('');
   const debouncedTaskSearch = useListPageSearchDebounce(searchQ);
@@ -147,7 +147,7 @@ export default function TasksPanel() {
 
   const toggleView = (mode: 'list' | 'kanban') => {
     setViewMode(mode);
-    localStorage.setItem('splm-task-view', mode);
+    writeTasksViewModeForSession(mode);
   };
 
   const blank = { title: '', description: '', type: 'feature', priority: 'medium', status: 'backlog', product_id: '', due_date: '', estimated_hours: 4, story_points: 0, sprint_id: '', source: 'manual' };
@@ -238,6 +238,7 @@ export default function TasksPanel() {
           task={selectedTask}
           products={products}
           developers={developers}
+          sprints={sprints}
           onClose={() => setSelectedTask(null)}
           onRefresh={async () => {
             // load() returns fresh tasks — avoids the stale closure bug
@@ -255,18 +256,6 @@ export default function TasksPanel() {
             <div className="flex border rounded-md overflow-hidden">
               <button
                 type="button"
-                onClick={() => toggleView('list')}
-                className={cn(
-                  'px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
-                  viewMode === 'list'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-muted-foreground hover:bg-muted',
-                )}
-              >
-                <List className="w-3.5 h-3.5" /> List
-              </button>
-              <button
-                type="button"
                 onClick={() => toggleView('kanban')}
                 className={cn(
                   'px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
@@ -276,6 +265,18 @@ export default function TasksPanel() {
                 )}
               >
                 <LayoutGrid className="w-3.5 h-3.5" /> Board
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleView('list')}
+                className={cn(
+                  'px-2.5 py-1.5 text-xs flex items-center gap-1 cursor-pointer transition-colors',
+                  viewMode === 'list'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
+                <List className="w-3.5 h-3.5" /> List
               </button>
             </div>
             {can('edit') && (

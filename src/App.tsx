@@ -59,6 +59,7 @@ const GlobalSearchPage        = lazy(() => import('@/pages/GlobalSearchPage'));
 const AuditLogsPanel          = lazy(() => import('@/components/panels/AuditLogsPanel'));
 const AdminUsersPanel         = lazy(() => import('@/components/panels/AdminUsersPanel'));
 const AdminRbacPanel          = lazy(() => import('@/components/panels/AdminRbacPanel'));
+const ProfilePanel            = lazy(() => import('@/components/panels/ProfilePanel'));
 
 /** Wraps each lazy panel in a Suspense boundary with a skeleton fallback. */
 const Panel = ({ children }: { children: React.ReactNode }) => (
@@ -99,6 +100,7 @@ const App = () => (
               {/* ── Core SPLM routes (permissions from `config/splm-navigation.ts`) ── */}
               <Route path="dashboard"    element={<PanelRoute segment="dashboard"><DashboardPanel /></PanelRoute>} />
               <Route path="queue"        element={<PanelRoute segment="queue"><MyQueuePanel /></PanelRoute>} />
+              <Route path="profile"      element={<PanelRoute segment="profile"><ProfilePanel /></PanelRoute>} />
               <Route path="products"     element={<PanelRoute segment="products"><ProductsPanel /></PanelRoute>} />
               <Route path="tasks"        element={<PanelRoute segment="tasks"><TasksPanel /></PanelRoute>} />
               <Route path="sprints"      element={<PanelRoute segment="sprints"><SprintsPanel /></PanelRoute>} />

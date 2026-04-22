@@ -49,6 +49,11 @@ export default function AdminUsersPanel() {
   const [createPassword, setCreatePassword] = useState('');
   const [createRole, setCreateRole] = useState(SplmRoles.Viewer);
   const [createBusy, setCreateBusy] = useState(false);
+  const [createFieldErrors, setCreateFieldErrors] = useState<{
+    email?: string;
+    name?: string;
+    password?: string;
+  }>({});
 
   const [resetTarget, setResetTarget] = useState<AdminUserListItemDto | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
@@ -119,11 +124,22 @@ export default function AdminUsersPanel() {
   };
 
   const onCreate = async () => {
+    const next: { email?: string; name?: string; password?: string } = {};
+    const email = createEmail.trim();
+    const name = createName.trim();
+    if (!email) next.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = 'Enter a valid email address';
+    if (!name) next.name = 'Display name is required';
+    if (!createPassword) next.password = 'Password is required';
+    else if (createPassword.length < 8) next.password = 'Use at least 8 characters';
+    setCreateFieldErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setCreateBusy(true);
     try {
       await adminUsersApi.createUser({
-        email: createEmail.trim(),
-        name: createName.trim(),
+        email,
+        name,
         password: createPassword,
         role: createRole,
       });
@@ -133,6 +149,7 @@ export default function AdminUsersPanel() {
       setCreateName('');
       setCreatePassword('');
       setCreateRole(SplmRoles.Viewer);
+      setCreateFieldErrors({});
       setPage(1);
       await load();
     } catch (e) {
@@ -296,7 +313,13 @@ export default function AdminUsersPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateFieldErrors({});
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create user</DialogTitle>
@@ -304,20 +327,52 @@ export default function AdminUsersPanel() {
           <div className="grid gap-3 py-2">
             <div className="grid gap-1">
               <label className="text-xs font-medium text-muted-foreground">Email</label>
-              <Input value={createEmail} onChange={e => setCreateEmail(e.target.value)} autoComplete="off" />
+              <Input
+                value={createEmail}
+                onChange={(e) => {
+                  setCreateFieldErrors((p) => ({ ...p, email: undefined }));
+                  setCreateEmail(e.target.value);
+                }}
+                autoComplete="off"
+                aria-invalid={!!createFieldErrors.email}
+                className={createFieldErrors.email ? 'border-destructive' : undefined}
+              />
+              {createFieldErrors.email ? (
+                <p className="text-xs text-destructive">{createFieldErrors.email}</p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <label className="text-xs font-medium text-muted-foreground">Display name</label>
-              <Input value={createName} onChange={e => setCreateName(e.target.value)} autoComplete="off" />
+              <Input
+                value={createName}
+                onChange={(e) => {
+                  setCreateFieldErrors((p) => ({ ...p, name: undefined }));
+                  setCreateName(e.target.value);
+                }}
+                autoComplete="off"
+                aria-invalid={!!createFieldErrors.name}
+                className={createFieldErrors.name ? 'border-destructive' : undefined}
+              />
+              {createFieldErrors.name ? (
+                <p className="text-xs text-destructive">{createFieldErrors.name}</p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <label className="text-xs font-medium text-muted-foreground">Password</label>
               <Input
                 type="password"
                 value={createPassword}
-                onChange={e => setCreatePassword(e.target.value)}
+                onChange={(e) => {
+                  setCreateFieldErrors((p) => ({ ...p, password: undefined }));
+                  setCreatePassword(e.target.value);
+                }}
                 autoComplete="new-password"
+                aria-invalid={!!createFieldErrors.password}
+                className={createFieldErrors.password ? 'border-destructive' : undefined}
               />
+              {createFieldErrors.password ? (
+                <p className="text-xs text-destructive">{createFieldErrors.password}</p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <label className="text-xs font-medium text-muted-foreground">App role</label>

@@ -104,6 +104,7 @@ export const SPLM_NAV_SECTIONS: SplmNavSectionDef[] = [
 export const SPLM_PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   dashboard: { title: 'Dashboard', subtitle: 'System overview & metrics' },
   queue: { title: 'My Queue', subtitle: 'Your assigned work items' },
+  profile: { title: 'Profile', subtitle: 'Your account and application role' },
   products: { title: 'Products', subtitle: 'Manage software products' },
   tasks: { title: 'Tasks', subtitle: 'Task management & tracking' },
   sprints: { title: 'Sprints', subtitle: 'Sprint planning & velocity' },
@@ -143,6 +144,8 @@ export function buildRoutePermissionMap(): Record<string, string> {
     }
   }
   m.search = SplmPermissions.Read;
+  /** Profile is opened from the header account menu only (not listed in the sidebar). */
+  m.profile = SplmPermissions.Read;
   return m;
 }
 

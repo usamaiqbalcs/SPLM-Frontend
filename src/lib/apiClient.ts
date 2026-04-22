@@ -115,11 +115,14 @@ export async function netFetch<T>(method: string, path: string, body?: unknown):
     const fromErrors = flattenApiValidationErrors(err?.errors);
     const detail = typeof err?.detail === 'string' ? err.detail.trim() : '';
     const title = typeof err?.title === 'string' ? err.title.trim() : '';
+    const message = typeof err?.message === 'string' ? err.message.trim() : '';
+    const error = typeof err?.error === 'string' ? err.error.trim() : '';
     const generic = 'One or more validation errors occurred.';
     const msg =
       (fromErrors ? fromErrors : '') ||
+      (error ? error : '') ||
+      (message ? message : '') ||
       (detail && detail !== generic ? detail : '') ||
-      (typeof err?.message === 'string' && err.message.trim() ? String(err.message).trim() : '') ||
       (title && title !== generic ? title : '') ||
       (detail || title || `HTTP ${res.status}`);
     throw new Error(msg);
@@ -367,8 +370,28 @@ export const deploymentsApi = {
   create: async (data: any) => netFetch<any>('POST', '/deployments', data),
 
   /** Advance pipeline (pending→building→…) or mark failed. */
-  patch: async (id: string, data: { status?: string; fail_reason?: string }) =>
+  patch: async (id: string, data: { status?: string; fail_reason?: string; workflow_run_id?: string; workflow_run_url?: string }) =>
     netFetch<any>('PATCH', `/deployments/${id}`, data),
+
+  /** Trigger AWS deployment pipeline (CodeBuild/GitHub Actions). */
+  trigger: async (id: string) =>
+    netFetch<{
+      success: boolean;
+      message: string;
+      workflowRunId?: string;
+      workflowRunUrl?: string;
+      error?: string;
+    }>('POST', `/deployments/${id}/trigger`),
+
+  /** Get deployment status from AWS/GitHub workflow. */
+  getStatus: async (id: string) =>
+    netFetch<{
+      status: string;
+      conclusion?: string;
+      htmlUrl?: string;
+      startedAt?: string;
+      completedAt?: string;
+    }>('GET', `/deployments/${id}/status`),
 };
 
 // ── Versions (semantic product versions) ─────────────────────────────────────

@@ -31,9 +31,11 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const unread = notifications.filter(n => !readIds.has(n.id)).length;
+  const visibleNotifications = notifications.filter(n => !dismissedIds.has(n.id));
+  const unread = visibleNotifications.filter(n => !readIds.has(n.id)).length;
 
   const refreshNotifications = useCallback(async () => {
     setLoading(true);
@@ -76,6 +78,10 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
         .slice(0, 12);
 
       setNotifications(notifs);
+      setDismissedIds((prev) => {
+        const ids = new Set(notifs.map((n) => n.id));
+        return new Set([...prev].filter((id) => ids.has(id)));
+      });
       // Merge server read keys with prior client reads so closing the panel (refresh) does not
       // wipe "read" state when the DB table is missing or POST has not completed yet.
       const currentIds = new Set(notifs.map(n => n.id));
@@ -129,9 +135,20 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
   };
 
   const markAllRead = () => {
-    const all = notifications.map(n => n.id);
-    setReadIds(new Set(all));
+    const all = visibleNotifications.map(n => n.id);
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      for (const id of all) next.add(id);
+      return next;
+    });
     void persistRead(all, true);
+  };
+
+  const dismissOne = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDismissedIds((prev) => new Set([...prev, id]));
+    markRead(id);
   };
 
   if (!open) return null;
@@ -175,7 +192,7 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
           </div>
         )}
 
-        {!loading && notifications.length === 0 && (
+        {!loading && visibleNotifications.length === 0 && (
           <div className="px-4 py-10 text-center">
             <Bell className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">All clear!</p>
@@ -183,7 +200,7 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
           </div>
         )}
 
-        {!loading && notifications.map(n => {
+        {!loading && visibleNotifications.map(n => {
           const cfg = TYPE_CONFIG[n.type];
           const Icon = cfg.icon;
           const isRead = readIds.has(n.id);
@@ -200,31 +217,39 @@ export default function NotificationsPanel({ open, onClose, onNavigate, onUnread
                 }
               }}
               className={cn(
-                'flex gap-3 px-4 py-3 border-b last:border-0 cursor-pointer transition-colors hover:bg-muted/40',
+                'group flex gap-2 px-3 py-3 border-b last:border-0 cursor-pointer transition-colors hover:bg-muted/40 sm:gap-3 sm:pl-4 sm:pr-2',
                 isRead && 'opacity-50'
               )}
             >
               <div className={cn('w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5', cfg.bg)}>
                 <Icon className={cn('w-4 h-4', cfg.color)} />
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1 pr-0.5">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs font-semibold text-foreground leading-tight line-clamp-1">{n.title}</span>
-                  {!isRead && <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1" />}
+                  <span className="line-clamp-1 text-xs font-semibold leading-tight text-foreground">{n.title}</span>
+                  {!isRead && <div className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-primary" />}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{n.subtitle}</div>
-                <div className={cn('text-[10px] font-semibold mt-1 uppercase tracking-wide', cfg.color)}>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">{n.subtitle}</div>
+                <div className={cn('mt-1 text-[10px] font-semibold uppercase tracking-wide', cfg.color)}>
                   {cfg.label}
                 </div>
               </div>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={(e) => dismissOne(e, n.id)}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           );
         })}
       </div>
 
-      {notifications.length > 0 && (
+      {visibleNotifications.length > 0 && (
         <div className="px-4 py-2.5 border-t bg-muted/30 flex justify-between items-center">
-          <span className="text-[11px] text-muted-foreground">{notifications.length} total alerts</span>
+          <span className="text-[11px] text-muted-foreground">{visibleNotifications.length} total alerts</span>
           <button
             type="button"
             onClick={() => { onNavigate('tasks'); onClose(); }}

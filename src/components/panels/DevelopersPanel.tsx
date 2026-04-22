@@ -22,6 +22,7 @@ export default function DevelopersPanel() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ name?: string; email?: string }>({});
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -62,12 +63,28 @@ export default function DevelopersPanel() {
 
   const blank = { name: '', email: '', role: 'developer', skills: '', office_location: 'Toronto', capacity_hours_week: 40, active: true };
 
+  const emailLooksValid = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
   const doSave = async () => {
-    if (!form.name || !form.email) return toast.error('Name and email are required');
+    const next: { name?: string; email?: string } = {};
+    if (!form.name?.trim()) next.name = 'Name is required';
+    if (!form.email?.trim()) next.email = 'Email is required';
+    else if (!emailLooksValid(form.email)) next.email = 'Enter a valid email address';
+    setFormErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setSaving(true);
-    try { await saveDeveloper(form); toast.success(form.id ? 'Developer updated' : 'Developer added'); load(); setForm(null); }
-    catch (e: any) { toast.error(e.message); }
-    finally { setSaving(false); }
+    try {
+      await saveDeveloper(form);
+      toast.success(form.id ? 'Developer updated' : 'Developer added');
+      load();
+      setForm(null);
+      setFormErrors({});
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not save developer.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const doDelete = async () => {
@@ -94,8 +111,33 @@ export default function DevelopersPanel() {
         <Button variant="outline" onClick={() => setForm(null)}>← Back</Button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div><Label>Name *</Label><Input value={form.name || ''} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} /></div>
-        <div><Label>Email *</Label><Input type="email" value={form.email || ''} onChange={e => setForm((f: any) => ({ ...f, email: e.target.value }))} /></div>
+        <div className="space-y-1">
+          <Label>Name *</Label>
+          <Input
+            value={form.name || ''}
+            onChange={(e) => {
+              setFormErrors((p) => ({ ...p, name: undefined }));
+              setForm((f: any) => ({ ...f, name: e.target.value }));
+            }}
+            aria-invalid={!!formErrors.name}
+            className={formErrors.name ? 'border-destructive' : undefined}
+          />
+          {formErrors.name ? <p className="text-xs text-destructive">{formErrors.name}</p> : null}
+        </div>
+        <div className="space-y-1">
+          <Label>Email *</Label>
+          <Input
+            type="email"
+            value={form.email || ''}
+            onChange={(e) => {
+              setFormErrors((p) => ({ ...p, email: undefined }));
+              setForm((f: any) => ({ ...f, email: e.target.value }));
+            }}
+            aria-invalid={!!formErrors.email}
+            className={formErrors.email ? 'border-destructive' : undefined}
+          />
+          {formErrors.email ? <p className="text-xs text-destructive">{formErrors.email}</p> : null}
+        </div>
         <div><Label>Role</Label><div className="mt-1"><SearchableSelect options={devRoleOptions} value={form.role} onValueChange={(v) => setForm((f: any) => ({ ...f, role: v }))} searchPlaceholder="Search role…" /></div></div>
         <div><Label>Office</Label><div className="mt-1"><SearchableSelect options={officeOptions} value={form.office_location} onValueChange={(v) => setForm((f: any) => ({ ...f, office_location: v }))} searchPlaceholder="Search office…" /></div></div>
         <div><Label>Capacity (hrs/wk)</Label><Input type="number" min={1} max={60} value={form.capacity_hours_week || 40} onChange={e => setForm((f: any) => ({ ...f, capacity_hours_week: parseInt(e.target.value) || 40 }))} /></div>

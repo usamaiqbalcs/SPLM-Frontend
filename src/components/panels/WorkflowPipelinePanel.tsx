@@ -12,7 +12,13 @@ import { fmtDate } from '@/lib/splm-utils';
 import { toast } from 'sonner';
 import { ChevronRight, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { DEFAULT_LIST_PAGE_SIZE, ListPaginationBar } from '@/components/listing/listPageSearch';
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  ListPageSearchInput,
+  ListPaginationBar,
+  rowMatchesListSearch,
+  useListPageSearchDebounce,
+} from '@/components/listing/listPageSearch';
 import { SplmPageHeader } from '@/components/layout/SplmPageHeader';
 
 const PHASES = ['pm_build', 'dev_handoff', 'qa_cycle', 'acceptance', 'production'] as const;
@@ -53,16 +59,35 @@ export default function WorkflowPipelinePanel() {
   const [auditLogs, setAuditLogs] = useState<WorkflowAuditLogDto[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [wfPage, setWfPage] = useState(1);
+  const [wfSearch, setWfSearch] = useState('');
+  const debouncedWfSearch = useListPageSearchDebounce(wfSearch);
 
-  const wfTotalPages = Math.max(1, Math.ceil(workflows.length / DEFAULT_LIST_PAGE_SIZE));
+  // Sort descending by phase_started_at (newest first), then filter by search
+  const filteredWorkflows = useMemo(() => {
+    const sorted = [...workflows].sort(
+      (a, b) =>
+        new Date(b.phase_started_at ?? b.updated_at).getTime() -
+        new Date(a.phase_started_at ?? a.updated_at).getTime(),
+    );
+    if (!debouncedWfSearch.trim()) return sorted;
+    return sorted.filter((w) =>
+      rowMatchesListSearch(debouncedWfSearch, [w.product_name, w.phase]),
+    );
+  }, [workflows, debouncedWfSearch]);
+
+  const wfTotalPages = Math.max(1, Math.ceil(filteredWorkflows.length / DEFAULT_LIST_PAGE_SIZE));
   const pagedWorkflows = useMemo(() => {
     const start = (wfPage - 1) * DEFAULT_LIST_PAGE_SIZE;
-    return workflows.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
-  }, [workflows, wfPage]);
+    return filteredWorkflows.slice(start, start + DEFAULT_LIST_PAGE_SIZE);
+  }, [filteredWorkflows, wfPage]);
 
   useEffect(() => {
     setWfPage((p) => Math.min(Math.max(1, p), wfTotalPages));
   }, [wfTotalPages]);
+
+  useEffect(() => {
+    setWfPage(1);
+  }, [debouncedWfSearch]);
 
   const load = async () => {
     setLoading(true);
@@ -230,6 +255,21 @@ export default function WorkflowPipelinePanel() {
 
       {/* Footer sits outside the vertical stack so inset pagination aligns with card edges, not spaced like a row. */}
       <div className="rounded-lg border border-border/80 bg-card p-5 shadow-sm">
+        {/* Search bar + match count */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {debouncedWfSearch.trim()
+              ? `${filteredWorkflows.length} of ${workflows.length} match`
+              : `${workflows.length} pipeline${workflows.length === 1 ? '' : 's'}`}
+          </span>
+          <ListPageSearchInput
+            value={wfSearch}
+            onChange={setWfSearch}
+            className="w-full sm:w-52"
+            aria-label="Search by product name or phase"
+          />
+        </div>
+
         {loading ? (
           <TableSkeleton />
         ) : workflows.length === 0 ? (
@@ -237,6 +277,12 @@ export default function WorkflowPipelinePanel() {
             <span className="text-4xl mb-3">📊</span>
             <p className="font-medium">No products in workflow</p>
             <p className="text-xs mt-1">Products will appear here once they enter the workflow</p>
+          </div>
+        ) : filteredWorkflows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <span className="text-4xl mb-3">🔎</span>
+            <p className="font-medium">No pipelines match your search</p>
+            <p className="text-xs mt-1">Try a different product name or phase</p>
           </div>
         ) : (
           <>
@@ -330,7 +376,7 @@ export default function WorkflowPipelinePanel() {
               variant="inset"
               page={wfPage}
               totalPages={wfTotalPages}
-              totalItems={workflows.length}
+              totalItems={filteredWorkflows.length}
               pageSize={DEFAULT_LIST_PAGE_SIZE}
               onPageChange={setWfPage}
               disabled={loading}

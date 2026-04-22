@@ -61,7 +61,6 @@ export default function CanaryDeploymentPanel() {
     environment: 'production',
     branch: 'main',
     commit_sha: '',
-    canary_stage: 'canary',
     rollout_percentage: 10,
     monitoring_window_hrs: 24,
     canary_notes: '',
@@ -104,13 +103,37 @@ export default function CanaryDeploymentPanel() {
     }
     try {
       setSubmitting(true);
-      await createDeployment({
-        ...form,
+
+      // Step 1: Create the base deployment record (backend CreateDeploymentRequest
+      // does not accept canary fields, so they are applied in step 2).
+      const created: any = await createDeployment({
+        product_id:  form.product_id,
+        version:     form.version,
+        environment: form.environment,
+        branch:      form.branch,
+        commit_sha:  form.commit_sha,
         deploy_type: 'partial',
       });
+
+      // Step 2: Apply all canary-specific fields via the dedicated PATCH endpoint.
+      // CanaryStage must be 'initiated' for a brand-new canary deployment
+      // (valid values: none | initiated | 10pct | 50pct | 100pct).
+      if (created?.id) {
+        await netFetch('PATCH', `/deployments/${created.id}/canary`, {
+          canaryStage:         'initiated',
+          rolloutPercentage:   form.rollout_percentage,
+          monitoringWindowHrs: form.monitoring_window_hrs,
+          ...(form.canary_notes ? { canaryNotes: form.canary_notes } : {}),
+        });
+      }
+
       toast.success('Canary deployment created');
       setShowCreate(false);
-      setForm({ product_id: '', version: '', environment: 'production', branch: 'main', commit_sha: '', canary_stage: 'canary', rollout_percentage: 10, monitoring_window_hrs: 24, canary_notes: '' });
+      setForm({
+        product_id: '', version: '', environment: 'production', branch: 'main',
+        commit_sha: '', rollout_percentage: 10,
+        monitoring_window_hrs: 24, canary_notes: '',
+      });
       load();
     } catch (err: any) {
       toast.error(err.message || 'Failed to create deployment');
@@ -122,10 +145,8 @@ export default function CanaryDeploymentPanel() {
   const handlePromote = async (d: Deployment) => {
     try {
       setSubmitting(true);
-      await netFetch('PATCH', `/deployments/${d.id}`, {
-        canary_stage: 'full',
-        rollout_percentage: 100,
-        canary_promoted_at: new Date().toISOString(),
+      await netFetch('PATCH', `/deployments/${d.id}/canary`, {
+        promoted: true,
       });
       toast.success('Canary promoted to full deployment');
       setPromoteTarget(null);
@@ -139,9 +160,11 @@ export default function CanaryDeploymentPanel() {
 
   const handleRollback = async (d: Deployment) => {
     try {
+      await netFetch('PATCH', `/deployments/${d.id}/canary`, {
+        canaryStage: 'none',
+      });
       await netFetch('PATCH', `/deployments/${d.id}`, {
         status: 'rolled_back',
-        canary_stage: 'none',
       });
       toast.success('Canary rolled back');
       load();
@@ -410,6 +433,7 @@ export default function CanaryDeploymentPanel() {
                   <span className="font-medium text-right break-all">{v}</span>
                 </div>
               ))}
+
               {detailDeployment.canary_notes && (
                 <div className="pt-2">
                   <div className="text-xs text-muted-foreground mb-1">Canary notes</div>
